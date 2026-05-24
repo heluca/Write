@@ -99,7 +99,9 @@ DEFS += _USE_MATH_DEFINES UNICODE NOMINMAX FONS_WPATH
 
 # only dependencies under this path will be tracked in .d files; note [\\] must be used for "\"
 # ensure that no paths containing spaces are included
-DEPENDBASE ?= c:[\\]temp[\\]styluslabs
+FWDSLASH := /
+BACKSLASH_ESC := [\\]
+DEPENDBASE ?= $(subst $(FWDSLASH),$(BACKSLASH_ESC),$(abspath ..))
 
 # shell32 for ShellExecute; user32 for clipboard fns; libs below opengl32.lib needed only for static SDL
 LIBS = \

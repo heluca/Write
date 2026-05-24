@@ -94,11 +94,11 @@ $(OBJDIR)/$(FORCECPP): CFLAGS += /TP
 #  it will get swallowed - we could add more matches, e.g., /C:"^[^N]" /C:"^N[^o] etc. if this is a problem.
 $(OBJDIR)/%.obj: %.cpp
 	@echo|set /p x="$@: " > $(basename $@).d
-	@($(CXX) /showIncludes $(CFLAGS) $(CXXFLAGS) $(INCFLAGS) /Fo:$@ /c $< || echo XXXDIE) | @FOR /F "tokens=1,2,3,*" %%A IN ('$(DEPENDFILT)') DO @IF "%%A"=="Note:" (echo|set /p x="%%D ">>$(basename $@).d) ELSE (@IF "%%A"=="XXXDIE" (exit 2) ELSE echo %%A %%B %%C %%D)
+	($(CXX) /showIncludes $(CFLAGS) $(CXXFLAGS) $(INCFLAGS) /Fo:$@ /c $< || echo XXXDIE) | @FOR /F "tokens=1,2,3,*" %%A IN ('$(DEPENDFILT)') DO @IF "%%A"=="Note:" (echo|set /p x="%%D ">>$(basename $@).d) ELSE (@IF "%%A"=="XXXDIE" (exit 2) ELSE echo %%A %%B %%C %%D)
 
 $(OBJDIR)/%.obj: %.c
 	@echo|set /p x="$@: " > $(basename $@).d
-	@($(CC) /showIncludes $(CFLAGS) $(CCFLAGS) $(INCFLAGS) /Fo:$@ /c $< || echo XXXDIE) | @FOR /F "tokens=1,2,3,*" %%A IN ('$(DEPENDFILT)') DO @IF "%%A"=="Note:" (echo|set /p x="%%D ">>$(basename $@).d) ELSE (@IF "%%A"=="XXXDIE" (exit 2) ELSE echo %%A %%B %%C %%D)
+	($(CC) /showIncludes $(CFLAGS) $(CCFLAGS) $(INCFLAGS) /Fo:$@ /c $< || echo XXXDIE) | @FOR /F "tokens=1,2,3,*" %%A IN ('$(DEPENDFILT)') DO @IF "%%A"=="Note:" (echo|set /p x="%%D ">>$(basename $@).d) ELSE (@IF "%%A"=="XXXDIE" (exit 2) ELSE echo %%A %%B %%C %%D)
 
 $(OBJDIR)/%.res: %.rc
 	$(RC) $(RCFLAGS) /fo $@ $<
