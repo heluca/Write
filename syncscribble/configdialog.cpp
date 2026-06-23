@@ -137,7 +137,55 @@ void ConfigDialog::init()
     }
     else if(type == "button") {
       std::string n = name;
-      if(n == "Reset Prefs") {
+      if(n == "Config Edit") {
+        TextEdit* keyedit = createTextEdit(-1);
+        keyedit->setEmptyText("Config key");
+        TextEdit* valedit = createTextEdit(-1);
+        valedit->setEmptyText("Value");
+        valedit->setMargins(0, 4);
+        Button* acceptbtn = createToolbutton(SvgGui::useFile(":/icons/ic_menu_accept.svg"));
+        Widget* cfgeditrow = createRow({keyedit, valedit, acceptbtn}, "5 0", "space-between");
+        //cfgeditrow->node->addClass("button-container");
+        auto enterfn = [=](SvgGui* gui, SDL_Event* event){
+          if(event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_RETURN) {
+            acceptbtn->onClicked();
+            return true;
+          }
+          return false;
+        };
+        keyedit->addHandler(enterfn);
+        valedit->addHandler(enterfn);
+        keyedit->onChanged = [=](const char*){ valedit->setText(""); };
+        acceptbtn->onClicked = [=](){
+          std::string key = keyedit->text();
+          if(key.empty()) { return; }
+          if(valedit->text().empty()) {
+            if(cfg->isInt(key.c_str()))
+              valedit->setText(std::to_string(cfg->Int(key.c_str())).c_str());
+            else if(cfg->isFloat(key.c_str()))
+              valedit->setText(std::to_string(cfg->Float(key.c_str())).c_str());
+            else if(cfg->isString(key.c_str()))
+              valedit->setText(cfg->String(key.c_str()));
+            else
+              mw->messageBox(ScribbleApp::Error, _("Invalid config key"), _("Config value does not exist: ") + key);
+            mw->gui->setFocused(valedit);
+            valedit->selectAll();
+          }
+          else {
+            if(cfg->setConfigValue(key.c_str(), valedit->text().c_str())) {
+              mw->messageBox(ScribbleApp::Info, _("Config value set"), _("Config value set successfully: ") + key);
+              valedit->setText("");
+            }
+            else
+              mw->messageBox(ScribbleApp::Error, _("Invalid config key"), _("Config value does not exist: ") + key);
+          }
+        };
+        propGroups[group]->addWidget(cfgeditrow);
+        // for basic/adv prefs - note toggleAdvPrefs() shows/hides parent of widget in allprops
+        allprops.push_back(acceptbtn);
+        acceptbtn->node->addClass(pref.attribute("level").as_int(0) ? "basic" : "advanced");
+      }
+      else if(n == "Reset Prefs") {
         Widget* resetbtns = createRow({}, "5 0", "space-between");
         resetbtns->node->addClass("button-container");
         Button* appresetbtn = createPushbutton(_("Reset Preferences"));

@@ -201,6 +201,7 @@ const char* prefInfoXML = R"#(
   <pref name="updateCheck" type="bool" level="1" group="Advanced" exclude="mobile"
       title="Check for updates (weekly)" description="Check online for updates once a week" />
   <pref name="showAdvPrefs" type="bool" level="1" group="Advanced" title="Show advanced preferences" description="" />
+  <pref name="Config Edit" type="button" group="Advanced" />
   <pref name="Reset Prefs" type="button" group="Advanced" />
   <pref name="About Write" type="button" level="1" group="Advanced" />
 

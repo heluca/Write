@@ -344,7 +344,7 @@ bool ScribbleConfig::setConfigValue(const char* name, const char* val)
     if(val[0] == 't' || val[0] == 'T')
       cfg[key] = 1;
     else
-      cfg[key] = atoi(val);
+      cfg[key] = strtol(val, NULL, 0);
   }
   else if((key = isFloat(name)))
     cfgF[key] = atof(val);
