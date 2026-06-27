@@ -27,6 +27,7 @@ SOURCES = \
   scribblewidget.cpp \
   scribbleconfig.cpp \
   scribblesync.cpp \
+  httpclient.cpp \
   documentlist.cpp \
   rulingdialog.cpp \
   configdialog.cpp \
@@ -289,6 +290,10 @@ endif
 CFLAGS = -pthread
 # X11 and Xi needed for linuxtablet.c
 LIBS += -pthread -ldl -lX11 -lXi
+
+# WebDAV remote storage: HTTP(S) via libcurl (dev: system lib via pkg-config; release builds
+# should link static libcurl+mbedtls like SDL to keep the .tgz self-contained)
+PKGS += libcurl
 
 # distribution package
 TGZ = write$(GITCOUNT).tar.gz
