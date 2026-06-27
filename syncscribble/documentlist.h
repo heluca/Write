@@ -80,6 +80,8 @@ private:
   std::unique_ptr<SvgNode> gridItemProto;
   std::vector<Button*> breadCrumbs;
   Button* drivesBtn;
+  Button* favoritesBtn;
+  Menu* favoritesMenu;
 #if PLATFORM_ANDROID
   Button* privateDirBtn;
   Button* sharedDirBtn;
@@ -101,6 +103,9 @@ private:
   Mode_t currMode = OPEN_DOC; //chooseOnly;
 
   void setCurrDir(const char* path);
+  void rebuildFavoritesMenu();
+  std::vector<std::string> getFavorites() const;
+  void setFavorites(const std::vector<std::string>& favs);
   void createUI();
   bool convertDocuments(FSPath src);
   void zoomListView(int step);

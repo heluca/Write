@@ -77,6 +77,12 @@ void DocumentList::createUI()
   whiteboardBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_people.svg"), _("Open Whiteboard"));
   whiteboardBtn->onClicked = [this](){ selectedFile = currDir.c_str(); finish(OPEN_WHITEBOARD); };
 
+  // Favorites: quick-jump to saved folders (local or WebDAV), available on all platforms
+  favoritesMenu = createMenu(Menu::VERT_LEFT, false);
+  favoritesBtn = createToolbutton(SvgGui::useFile("icons/ic_drive.svg"), _("Favorites"), true);
+  favoritesBtn->setMenu(favoritesMenu);
+  rebuildFavoritesMenu();
+
   Widget* stretch = createStretch();
 
   Toolbar* mainToolbar = createToolbar();
@@ -117,6 +123,7 @@ void DocumentList::createUI()
   drivesBtn->setVisible(false);
   mainToolbar->addWidget(drivesBtn);
 #endif
+  mainToolbar->addWidget(favoritesBtn);
   mainToolbar->addWidget(breadCrumbs[1]);
   mainToolbar->addWidget(breadCrumbs[0]);
   mainToolbar->addWidget(stretch);
@@ -356,6 +363,63 @@ void DocumentList::setup(Window* parent, Mode_t mode, const char* exts, bool can
 void DocumentList::refresh()
 {
   setCurrDir(currDir.c_str());
+}
+
+std::vector<std::string> DocumentList::getFavorites() const
+{
+  std::vector<std::string> favs;
+  std::string s = ScribbleApp::cfg->String("favoritePaths", "");
+  if(!s.empty()) {
+    for(StringRef part : splitStringRef(s, ":::"))
+      if(!part.isEmpty())
+        favs.push_back(part.toString());
+  }
+  return favs;
+}
+
+void DocumentList::setFavorites(const std::vector<std::string>& favs)
+{
+  ScribbleApp::cfg->set("favoritePaths", joinStr(favs, ":::").c_str());
+  rebuildFavoritesMenu();
+}
+
+void DocumentList::rebuildFavoritesMenu()
+{
+  if(gui())
+    gui()->deleteContents(favoritesMenu->selectFirst(".child-container"));
+
+  std::vector<std::string> favs = getFavorites();
+  // configured WebDAV server appears automatically (not duplicated if already a favorite)
+  std::string davUrl = ScribbleApp::cfg->String("webdavUrl", "");
+  if(!davUrl.empty() && std::find(favs.begin(), favs.end(), davUrl) == favs.end())
+    favs.insert(favs.begin(), davUrl);
+
+  for(const std::string& fav : favs) {
+    bool isCfgDav = (fav == davUrl);
+    // show a friendly label: host for WebDAV, folder name for local paths
+    std::string label = WebDavStream::isWebDavUrl(fav.c_str()) ? fav : FSPath(fav).fileName();
+    if(label.empty()) label = fav;
+    Button* item = favoritesMenu->addItem(label.c_str(),
+        SvgGui::useFile(WebDavStream::isWebDavUrl(fav.c_str()) ? "icons/ic_drive.svg" : "icons/ic_folder.svg"),
+        [this, fav](){ setCurrDir(fav.c_str()); });
+    // right-click to remove (auto WebDAV entry can't be removed here - manage it in settings)
+    if(!isCfgDav) {
+      SvgGui::setupRightClick(item, [this, fav](SvgGui* g, Widget* w, Point p){
+        std::vector<std::string> f = getFavorites();
+        f.erase(std::remove(f.begin(), f.end(), fav), f.end());
+        setFavorites(f);
+      });
+    }
+  }
+  favoritesMenu->addSeparator();
+  favoritesMenu->addItem(_("Add current folder"), [this](){
+    std::vector<std::string> f = getFavorites();
+    std::string cur = currDir.c_str();
+    if(std::find(f.begin(), f.end(), cur) == f.end()) {
+      f.push_back(cur);
+      setFavorites(f);
+    }
+  });
 }
 
 void DocumentList::finish(Result_t res)
