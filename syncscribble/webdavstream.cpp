@@ -2,10 +2,40 @@
 #include "httpclient.h"
 #include "scribbleapp.h"
 #include "scribbleconfig.h"
+#include "secretstore.h"
 #include "ulib/stringutil.h"
 #include "ulib/md5.h"
 #include "pugixml.hpp"
 #include <time.h>
+#include <map>
+
+// passwords entered for "prompt every session" mode (keychain off, plaintext off), keyed by URL
+static std::map<std::string, std::string>& sessionPasswords()
+{
+  static std::map<std::string, std::string> s;
+  return s;
+}
+
+void WebDavStream::setSessionPassword(const std::string& url, const std::string& pw)
+{
+  sessionPasswords()[url] = pw;
+}
+
+// resolve the password for a server URL per the configured policy:
+//  1. OS keychain (if available),  2. plaintext config (only if the user opted in),
+//  3. a password entered earlier this session.  Empty result => caller should prompt.
+std::string WebDavStream::password(const std::string& url)
+{
+  if(SecretStore::available()) {
+    std::string pw = SecretStore::lookup(url);
+    if(!pw.empty())
+      return pw;
+  }
+  if(ScribbleApp::cfg->Int("webdavSavePlaintext", 0))
+    return ScribbleApp::cfg->String("webdavPassword", "");
+  auto it = sessionPasswords().find(url);
+  return it != sessionPasswords().end() ? it->second : std::string();
+}
 
 bool WebDavStream::isWebDavUrl(const char* path)
 {
@@ -51,7 +81,7 @@ bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries)
   HttpRequest req(httpurl);
   std::string user = ScribbleApp::cfg->String("webdavUser", "");
   if(!user.empty())
-    req.auth(user, ScribbleApp::cfg->String("webdavPassword", ""));
+    req.auth(user, WebDavStream::password(ScribbleApp::cfg->String("webdavUrl", "")));
   MemStream body;
   HttpResponse resp = req.propfind(&body, 1);
   if(resp.status != 207)
@@ -109,7 +139,7 @@ bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries)
 WebDavStream::WebDavStream(const char* url, const char* mode) : m_url(toHttpUrl(url))
 {
   m_user = ScribbleApp::cfg->String("webdavUser", "");
-  m_pass = ScribbleApp::cfg->String("webdavPassword", "");
+  m_pass = password(ScribbleApp::cfg->String("webdavUrl", ""));
   m_writeMode = strchr(mode, 'w') != NULL;
   // read modes need the current contents; pure write mode starts empty
   m_open = m_writeMode ? true : doGet();

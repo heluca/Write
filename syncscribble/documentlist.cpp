@@ -439,6 +439,8 @@ void DocumentList::setCurrDir(const char* path)
   // pull the remote listing up front; bail (staying put) if it can't be reached
   std::vector<WebDavEntry> davEntries;
   if(remote) {
+    if(!ScribbleApp::app->ensureWebdavPassword())
+      return;  // user cancelled the password prompt
     if(!webdavListDir(path, davEntries)) {
       ScribbleApp::app->showNotify(_("Could not reach the WebDAV server."), 2);
       return;

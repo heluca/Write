@@ -269,7 +269,8 @@ void ScribbleConfig::init()
   // WebDAV remote storage
   cfgS["webdavUrl"] = "";       // base URL of remote collection (also enables http(s) URL detection)
   cfgS["webdavUser"] = "";
-  cfgS["webdavPassword"] = "";
+  cfgS["webdavPassword"] = "";  // only used if webdavSavePlaintext is set; otherwise OS keychain
+  cfg["webdavSavePlaintext"] = 0;  // opt-in to storing the password in the config file (e.g. for dev/headless)
   cfgS["favoritePaths"] = "";   // ":::"-separated list of favorite folders (local paths or WebDAV URLs)
 
   // document specific config

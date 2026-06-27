@@ -7,6 +7,8 @@
 #include "mainwindow.h"
 #include "scribbledoc.h"
 #include "webdavstream.h"
+#include "secretstore.h"
+#include "syncdialog.h"
 #include "scribblewidget.h"
 #include "scribblesync.h"
 #include "bookmarkview.h"
@@ -346,6 +348,7 @@ void ScribbleApp::init()
     }
     if(WebDavStream::isWebDavUrl(argDoc.c_str())) {
       // keep URLs out of FSPath/canonicalPath, which would mangle "//"
+      ensureWebdavPassword();
       if(activeDoc()->openDocument(argDoc.c_str()) != Document::LOAD_FATAL) {
         onLoadFile(activeDoc()->fileName());
         if(!outDoc.empty() && WebDavStream::isWebDavUrl(outDoc.c_str()))
@@ -1853,6 +1856,34 @@ bool ScribbleApp::checkExtModified()
       checkExtModified(doc);
   }
   return false;
+}
+
+bool ScribbleApp::ensureWebdavPassword()
+{
+  std::string url = cfg->String("webdavUrl", "");
+  std::string user = cfg->String("webdavUser", "");
+  if(url.empty() || user.empty())
+    return true;  // nothing configured, or anonymous - nothing to prompt for
+  if(!WebDavStream::password(url).empty())
+    return true;  // already have it (keychain / plaintext / this session)
+
+  // offer to save only if a keychain is available, or the user opted into plaintext
+  bool canSave = SecretStore::available() || cfg->Bool("webdavSavePlaintext");
+  SyncLoginDialog dialog(user.c_str(), canSave, fstring(_("Password for %s"), url.c_str()).c_str());
+  dialog.setTitle(_("WebDAV Login"));
+  if(execDialog(&dialog) != Dialog::ACCEPTED)
+    return false;
+  std::string pw = trimStr(dialog.passEdit->text());
+  if(pw.empty())
+    return false;
+  bool save = canSave && dialog.savePassword && dialog.savePassword->isChecked();
+  if(save && SecretStore::available())
+    SecretStore::store(url, pw);
+  else if(save && cfg->Bool("webdavSavePlaintext"))
+    cfg->set("webdavPassword", pw.c_str());
+  else
+    WebDavStream::setSessionPassword(url, pw);  // use for this session only
+  return true;
 }
 
 bool ScribbleApp::checkExtModified(ScribbleDoc* doc)

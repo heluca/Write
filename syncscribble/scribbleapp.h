@@ -80,6 +80,8 @@ public:
   void insertImage(Image image, bool fromintent = false);
   void showNotify(const std::string& msg, int level = 1);
   void dismissNotify();
+  // prompt for the WebDAV password if one is needed but not available (keychain/plaintext/session)
+  bool ensureWebdavPassword();
   void appSuspending();
   void hideBookmarks();
   void hideClippings();

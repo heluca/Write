@@ -4,6 +4,8 @@
 #include "basics.h"
 #include "scribbleapp.h"
 #include "mainwindow.h"  // only for getting bounds for insetting
+#include "webdavstream.h"
+#include "secretstore.h"
 
 
 ConfigDialog::ConfigDialog(ScribbleConfig* _cfg) : Dialog(createDialogNode()), cfg(_cfg)
@@ -283,6 +285,24 @@ void ConfigDialog::accept()
       cfg->set(name, float(static_cast<SpinBox*>(p)->value()));
     else if(p->node->hasClass("spinbox") && cfg->isInt(name))
       cfg->set(name, int(static_cast<SpinBox*>(p)->value()));
+    else if(strcmp(name, "webdavPassword") == 0) {
+      // route the WebDAV password per policy: OS keychain if available, else plaintext config
+      // only if the user opted in (webdavSavePlaintext), else hold it for this session only
+      std::string pw = static_cast<TextEdit*>(p)->text();
+      std::string url = cfg->String("webdavUrl", "");
+      if(!pw.empty() && !url.empty()) {
+        if(SecretStore::available()) {
+          SecretStore::store(url, pw);
+          cfg->set("webdavPassword", "");  // never leave it in config when keychain is used
+        }
+        else if(cfg->Bool("webdavSavePlaintext"))
+          cfg->set("webdavPassword", pw.c_str());
+        else {
+          WebDavStream::setSessionPassword(url, pw);
+          cfg->set("webdavPassword", "");
+        }
+      }
+    }
     else if(p->node->hasClass("textbox") && cfg->isString(name))
       cfg->set(name, static_cast<TextEdit*>(p)->text().c_str());
     else

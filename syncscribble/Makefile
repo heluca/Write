@@ -29,6 +29,7 @@ SOURCES = \
   scribblesync.cpp \
   httpclient.cpp \
   webdavstream.cpp \
+  secretstore.cpp \
   documentlist.cpp \
   rulingdialog.cpp \
   configdialog.cpp \
@@ -295,6 +296,9 @@ LIBS += -pthread -ldl -lX11 -lXi
 # WebDAV remote storage: HTTP(S) via libcurl (dev: system lib via pkg-config; release builds
 # should link static libcurl+mbedtls like SDL to keep the .tgz self-contained)
 PKGS += libcurl
+# OS keychain via the freedesktop Secret Service (gnome-keyring on MATE, KWallet on KDE)
+PKGS += libsecret-1
+DEFS += WEBDAV_USE_LIBSECRET
 
 # distribution package
 TGZ = write$(GITCOUNT).tar.gz

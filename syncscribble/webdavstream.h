@@ -43,6 +43,11 @@ public:
   // true if `path` should be handled as a WebDAV resource rather than a local file
   static bool isWebDavUrl(const char* path);
 
+  // resolve the password for a server URL (keychain -> plaintext config -> session cache);
+  // empty result means the caller should prompt and then setSessionPassword()
+  static std::string password(const std::string& serverUrl);
+  static void setSessionPassword(const std::string& serverUrl, const std::string& pw);
+
 private:
   std::string m_url;
   std::string m_user;

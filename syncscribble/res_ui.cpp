@@ -203,7 +203,10 @@ const char* prefInfoXML = R"#(
   <pref name="webdavUser" type="string" level="1" group="WebDAV"
       title="Username" description="" />
   <pref name="webdavPassword" type="string" level="1" group="WebDAV"
-      title="Password" description="Stored in config file (plaintext) for now" />
+      title="Password" description="Saved in the OS keychain when available" />
+  <pref name="webdavSavePlaintext" type="bool" level="1" group="WebDAV"
+      title="Save password in config (plaintext)"
+      description="Only if no keychain is available; otherwise the password is asked each session" />
   <pref name="updateCheck" type="bool" level="1" group="Advanced" exclude="mobile"
       title="Check for updates (weekly)" description="Check online for updates once a week" />
   <pref name="showAdvPrefs" type="bool" level="1" group="Advanced" title="Show advanced preferences" description="" />
