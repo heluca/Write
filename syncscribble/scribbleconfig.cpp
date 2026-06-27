@@ -266,6 +266,11 @@ void ScribbleConfig::init()
   cfgS["guiSVG"] = "";
   cfgS["guiCSS"] = "";
 
+  // WebDAV remote storage
+  cfgS["webdavUrl"] = "";       // base URL of remote collection (also enables http(s) URL detection)
+  cfgS["webdavUser"] = "";
+  cfgS["webdavPassword"] = "";
+
   // document specific config
   cfg["docFormatVersion"] = Document::docFormatVersion;
   cfg["pageNum"] = 0;

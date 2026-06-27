@@ -6,6 +6,7 @@
 #include "basics.h"
 #include "mainwindow.h"
 #include "scribbledoc.h"
+#include "webdavstream.h"
 #include "scribblewidget.h"
 #include "scribblesync.h"
 #include "bookmarkview.h"
@@ -341,6 +342,14 @@ void ScribbleApp::init()
         showNotify(fstring(_("\"%s\" could not be opened."), argDoc.c_str()), 2);
         PLATFORM_LOG("Error opening whiteboard link %s\n", argDoc.c_str());
       }
+      return;
+    }
+    if(WebDavStream::isWebDavUrl(argDoc.c_str())) {
+      // keep URLs out of FSPath/canonicalPath, which would mangle "//"
+      if(activeDoc()->openDocument(argDoc.c_str()) != Document::LOAD_FATAL)
+        onLoadFile(activeDoc()->fileName());
+      else
+        showNotify(fstring(_("\"%s\" could not be opened."), argDoc.c_str()), 2);
       return;
     }
     FSPath argInfo(canonicalPath(argDoc));

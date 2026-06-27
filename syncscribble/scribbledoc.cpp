@@ -4,6 +4,7 @@
 #include "scribblesync.h"
 #include "strokebuilder.h"
 #include "scribbleapp.h"
+#include "webdavstream.h"
 
 
 ScribbleDoc::ScribbleDoc(ScribbleApp* parent, ScribbleConfig* _cfg, ScribbleMode* _mode)
@@ -178,6 +179,8 @@ Image ScribbleDoc::extractThumbnail(const char* filename)
 
 Document::loadresult_t ScribbleDoc::openDocument(const char* filename, bool delayload)
 {
+  if(WebDavStream::isWebDavUrl(filename))
+    return openDocument(new WebDavStream(filename, "rb"), delayload);
   FileStream* strm = new FileStream(filename, "rb+");
   if(!strm->is_open())
     strm->open("rb");

@@ -28,6 +28,7 @@ SOURCES = \
   scribbleconfig.cpp \
   scribblesync.cpp \
   httpclient.cpp \
+  webdavstream.cpp \
   documentlist.cpp \
   rulingdialog.cpp \
   configdialog.cpp \
