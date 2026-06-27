@@ -21,28 +21,135 @@ void WebDavStream::setSessionPassword(const std::string& url, const std::string&
   sessionPasswords()[url] = pw;
 }
 
+// --- WebDAV server registry: multiple servers, each with its own username + password ---
+// Storage: two aligned ":::" config lists (webdavServers = base URLs, webdavServerUsers =
+// usernames); passwords in the OS keychain keyed by the server URL (or plaintext/session
+// per policy). The base URL always ends with '/'.
+
+std::vector<std::string> WebDavStream::servers()
+{
+  std::vector<std::string> out;
+  std::string s = ScribbleApp::cfg->String("webdavServers", "");
+  if(!s.empty())
+    for(StringRef part : splitStringRef(s, ":::"))
+      if(!part.isEmpty())
+        out.push_back(part.toString());
+  return out;
+}
+
+std::string WebDavStream::serverUser(const std::string& serverUrl)
+{
+  std::vector<std::string> urls = servers();
+  std::string usersStr = ScribbleApp::cfg->String("webdavServerUsers", "");
+  std::vector<StringRef> users = splitStringRef(usersStr, ":::");
+  for(size_t i = 0; i < urls.size() && i < users.size(); ++i)
+    if(urls[i] == serverUrl)
+      return users[i].toString();
+  return std::string();
+}
+
+// the registered server whose base URL is a prefix of `path` (so a doc/folder URL maps to
+// its server for credential lookup); empty if none match
+std::string WebDavStream::serverForUrl(const std::string& path)
+{
+  std::string best;
+  for(const std::string& s : servers()) {
+    if(path.compare(0, s.size(), s) == 0 && s.size() > best.size())
+      best = s;
+  }
+  return best;
+}
+
+void WebDavStream::addServer(const std::string& url, const std::string& user, const std::string& pw, bool savePw)
+{
+  std::string serverUrl = url;
+  if(serverUrl.empty() || serverUrl.back() != '/')
+    serverUrl += '/';
+  std::vector<std::string> urls = servers();
+  std::vector<StringRef> usersRef = splitStringRef(ScribbleApp::cfg->String("webdavServerUsers", ""), ":::");
+  std::vector<std::string> users;
+  for(auto& u : usersRef) users.push_back(u.toString());
+  users.resize(urls.size());  // keep aligned
+
+  auto it = std::find(urls.begin(), urls.end(), serverUrl);
+  if(it == urls.end()) {
+    urls.push_back(serverUrl);
+    users.push_back(user);
+  }
+  else
+    users[it - urls.begin()] = user;
+  ScribbleApp::cfg->set("webdavServers", joinStr(urls, ":::").c_str());
+  ScribbleApp::cfg->set("webdavServerUsers", joinStr(users, ":::").c_str());
+
+  // password per policy
+  if(!pw.empty()) {
+    if(savePw && SecretStore::available())
+      SecretStore::store(serverUrl, pw);
+    else if(savePw && ScribbleApp::cfg->Int("webdavSavePlaintext", 0))
+      ScribbleApp::cfg->set("webdavPassword", pw.c_str());  // single-slot plaintext fallback (dev)
+    else
+      setSessionPassword(serverUrl, pw);
+  }
+}
+
+void WebDavStream::removeServer(const std::string& serverUrl)
+{
+  std::vector<std::string> urls = servers();
+  std::vector<StringRef> usersRef = splitStringRef(ScribbleApp::cfg->String("webdavServerUsers", ""), ":::");
+  std::vector<std::string> users;
+  for(auto& u : usersRef) users.push_back(u.toString());
+  users.resize(urls.size());
+  auto it = std::find(urls.begin(), urls.end(), serverUrl);
+  if(it != urls.end()) {
+    users.erase(users.begin() + (it - urls.begin()));
+    urls.erase(it);
+    ScribbleApp::cfg->set("webdavServers", joinStr(urls, ":::").c_str());
+    ScribbleApp::cfg->set("webdavServerUsers", joinStr(users, ":::").c_str());
+    SecretStore::clear(serverUrl);
+  }
+}
+
 // resolve the password for a server URL per the configured policy:
 //  1. OS keychain (if available),  2. plaintext config (only if the user opted in),
 //  3. a password entered earlier this session.  Empty result => caller should prompt.
 std::string WebDavStream::password(const std::string& url)
 {
+  std::string server = serverForUrl(url);
+  if(server.empty()) server = url;  // url may already be the server base
   if(SecretStore::available()) {
-    std::string pw = SecretStore::lookup(url);
+    std::string pw = SecretStore::lookup(server);
     if(!pw.empty())
       return pw;
   }
-  if(ScribbleApp::cfg->Int("webdavSavePlaintext", 0))
-    return ScribbleApp::cfg->String("webdavPassword", "");
-  auto it = sessionPasswords().find(url);
+  if(ScribbleApp::cfg->Int("webdavSavePlaintext", 0)) {
+    std::string pw = ScribbleApp::cfg->String("webdavPassword", "");
+    if(!pw.empty())
+      return pw;
+  }
+  auto it = sessionPasswords().find(server);
   return it != sessionPasswords().end() ? it->second : std::string();
+}
+
+// resolve username for a doc/folder/server URL: registered server's user, else legacy webdavUser
+std::string WebDavStream::username(const std::string& url)
+{
+  std::string server = serverForUrl(url);
+  if(!server.empty()) {
+    std::string u = serverUser(server);
+    if(!u.empty())
+      return u;
+  }
+  return ScribbleApp::cfg->String("webdavUser", "");
 }
 
 bool WebDavStream::isWebDavUrl(const char* path)
 {
   if(!path) return false;
   StringRef p(path);
-  // explicit dav schemes, or plain http(s) when it matches the configured remote root
+  // explicit dav schemes, or any path under a registered server (or the legacy single webdavUrl)
   if(p.startsWith("dav://") || p.startsWith("davs://"))
+    return true;
+  if(!serverForUrl(path).empty())
     return true;
   const char* root = ScribbleApp::cfg->String("webdavUrl", "");
   if(root[0] && p.startsWith(root))
@@ -79,9 +186,9 @@ bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries)
   if(httpurl.empty() || httpurl.back() != '/')
     httpurl += '/';
   HttpRequest req(httpurl);
-  std::string user = ScribbleApp::cfg->String("webdavUser", "");
+  std::string user = WebDavStream::username(httpurl);
   if(!user.empty())
-    req.auth(user, WebDavStream::password(ScribbleApp::cfg->String("webdavUrl", "")));
+    req.auth(user, WebDavStream::password(httpurl));
   MemStream body;
   HttpResponse resp = req.propfind(&body, 1);
   if(resp.status != 207)
@@ -138,8 +245,8 @@ bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries)
 
 WebDavStream::WebDavStream(const char* url, const char* mode) : m_url(toHttpUrl(url))
 {
-  m_user = ScribbleApp::cfg->String("webdavUser", "");
-  m_pass = password(ScribbleApp::cfg->String("webdavUrl", ""));
+  m_user = username(m_url);
+  m_pass = password(m_url);
   m_writeMode = strchr(mode, 'w') != NULL;
   // read modes need the current contents; pure write mode starts empty
   m_open = m_writeMode ? true : doGet();

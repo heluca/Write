@@ -3,6 +3,7 @@
 
 #include "scribbleapp.h"
 #include "webdavstream.h"
+#include "secretstore.h"
 #include "scribbledoc.h"
 #include "touchwidgets.h"
 
@@ -77,9 +78,15 @@ void DocumentList::createUI()
   whiteboardBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_people.svg"), _("Open Whiteboard"));
   whiteboardBtn->onClicked = [this](){ selectedFile = currDir.c_str(); finish(OPEN_WHITEBOARD); };
 
+  // WebDAV servers: list configured servers + "Add server..."; available on all platforms
+  webdavMenu = createMenu(Menu::VERT_LEFT, false);
+  webdavBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_cloud.svg"), _("WebDAV"), true);
+  webdavBtn->setMenu(webdavMenu);
+  rebuildWebdavMenu();
+
   // Favorites: quick-jump to saved folders (local or WebDAV), available on all platforms
   favoritesMenu = createMenu(Menu::VERT_LEFT, false);
-  favoritesBtn = createToolbutton(SvgGui::useFile("icons/ic_drive.svg"), _("Favorites"), true);
+  favoritesBtn = createToolbutton(SvgGui::useFile("icons/heart.svg"), _("Favorites"), true);
   favoritesBtn->setMenu(favoritesMenu);
   rebuildFavoritesMenu();
 
@@ -123,6 +130,7 @@ void DocumentList::createUI()
   drivesBtn->setVisible(false);
   mainToolbar->addWidget(drivesBtn);
 #endif
+  mainToolbar->addWidget(webdavBtn);
   mainToolbar->addWidget(favoritesBtn);
   mainToolbar->addWidget(breadCrumbs[1]);
   mainToolbar->addWidget(breadCrumbs[0]);
@@ -420,6 +428,65 @@ void DocumentList::rebuildFavoritesMenu()
       setFavorites(f);
     }
   });
+}
+
+void DocumentList::rebuildWebdavMenu()
+{
+  if(gui())
+    gui()->deleteContents(webdavMenu->selectFirst(".child-container"));
+
+  for(const std::string& server : WebDavStream::servers()) {
+    Button* item = webdavMenu->addItem(server.c_str(),
+        SvgGui::useFile("icons/ic_menu_cloud.svg"), [this, server](){ setCurrDir(server.c_str()); });
+    SvgGui::setupRightClick(item, [this, server](SvgGui* g, Widget* w, Point p){
+      if(ScribbleApp::messageBox(ScribbleApp::Question, _("Remove server"),
+          fstring(_("Remove WebDAV server %s?"), server.c_str()), {_("Remove"), _("Cancel")}) == _("Remove")) {
+        WebDavStream::removeServer(server);
+        rebuildWebdavMenu();
+      }
+    });
+  }
+  webdavMenu->addSeparator();
+  webdavMenu->addItem(_("Add server..."), SvgGui::useFile("icons/ic_menu_add_doc.svg"),
+      [this](){ addWebdavServer(); });
+}
+
+void DocumentList::addWebdavServer()
+{
+  Dialog dialog(createDialogNode());
+  TextEdit* urlEdit = createTextEdit(280);
+  urlEdit->setText("https://");
+  TextEdit* userEdit = createTextEdit(280);
+  TextEdit* passEdit = createTextEdit(280);
+  passEdit->editMode = TextEdit::PASSWORD_SHOWLAST;
+  bool canSave = SecretStore::available() || ScribbleApp::cfg->Bool("webdavSavePlaintext");
+  CheckBox* savePw = canSave ? createCheckBox() : NULL;
+  if(savePw) savePw->setChecked(true);
+
+  Widget* body = dialog.selectFirst(".body-container");
+  body->addWidget(createTitledRow(_("Server URL"), 0, urlEdit));
+  body->addWidget(createTitledRow(_("User"), 0, userEdit));
+  body->addWidget(createTitledRow(_("Password"), 0, passEdit));
+  if(savePw)
+    body->addWidget(createTitledRow(_("Save password"), savePw));
+  body->setMargins(8, 8, 0, 8);
+  dialog.setTitle(_("Add WebDAV Server"));
+  dialog.focusedWidget = urlEdit;
+  Button* okBtn = dialog.addButton(_("OK"), [&dialog](){ dialog.finish(Dialog::ACCEPTED); });
+  dialog.addButton(_("Cancel"), [&dialog](){ dialog.finish(Dialog::CANCELLED); });
+  urlEdit->onChanged = [okBtn](const char* s){ okBtn->setEnabled(s && s[0] && strstr(s, "://")); };
+  okBtn->setEnabled(false);
+
+  if(ScribbleApp::execDialog(&dialog) != Dialog::ACCEPTED)
+    return;
+  std::string url = trimStr(urlEdit->text());
+  if(url.empty() || url.find("://") == std::string::npos)
+    return;
+  WebDavStream::addServer(url, trimStr(userEdit->text()), trimStr(passEdit->text()),
+      savePw && savePw->isChecked());
+  rebuildWebdavMenu();
+  // jump straight to the new server
+  setCurrDir(WebDavStream::servers().back().c_str());
 }
 
 void DocumentList::finish(Result_t res)

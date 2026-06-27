@@ -271,6 +271,8 @@ void ScribbleConfig::init()
   cfgS["webdavUser"] = "";
   cfgS["webdavPassword"] = "";  // only used if webdavSavePlaintext is set; otherwise OS keychain
   cfg["webdavSavePlaintext"] = 0;  // opt-in to storing the password in the config file (e.g. for dev/headless)
+  cfgS["webdavServers"] = "";       // ":::"-separated WebDAV server base URLs (each ends with '/')
+  cfgS["webdavServerUsers"] = "";   // ":::"-separated usernames, aligned with webdavServers
   cfgS["favoritePaths"] = "";   // ":::"-separated list of favorite folders (local paths or WebDAV URLs)
 
   // document specific config

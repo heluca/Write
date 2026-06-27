@@ -1010,7 +1010,17 @@ static const char* icons__write_icon_flat_svg = R"~~~~(<?xml version="1.0" encod
 </svg>
 )~~~~";
 
+static const char* icons__heart_svg = R"~~~~(<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.2" baseProfile="tiny" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+  x="0px" y="0px" width="96px" height="96px" viewBox="-4 -4 32 32" xml:space="preserve">
+<g class="icon">
+  <path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5 2,5.41 4.42,3 7.5,3 9.24,3 10.91,3.81 12,5.08 13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.41 22,8.5 22,12.27 18.6,15.36 13.45,20.03L12,21.35Z" />
+</g>
+</svg>
+)~~~~";
+
 static void LOAD_RES_FN() { addStringResources({
+  {"icons/heart.svg", icons__heart_svg},
   {"icons/arrow_down.svg", icons__arrow_down_svg},
   {"icons/arrow_up.svg", icons__arrow_up_svg},
   {"icons/checkbox_check.svg", icons__checkbox_check_svg},

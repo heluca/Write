@@ -43,10 +43,18 @@ public:
   // true if `path` should be handled as a WebDAV resource rather than a local file
   static bool isWebDavUrl(const char* path);
 
-  // resolve the password for a server URL (keychain -> plaintext config -> session cache);
+  // resolve the password for a server/doc URL (keychain -> plaintext config -> session cache);
   // empty result means the caller should prompt and then setSessionPassword()
-  static std::string password(const std::string& serverUrl);
+  static std::string password(const std::string& url);
+  static std::string username(const std::string& url);
   static void setSessionPassword(const std::string& serverUrl, const std::string& pw);
+
+  // --- WebDAV server registry (multiple servers, each with its own credentials) ---
+  static std::vector<std::string> servers();          // registered server base URLs (end with '/')
+  static std::string serverUser(const std::string& serverUrl);
+  static std::string serverForUrl(const std::string& path);  // server whose base prefixes path
+  static void addServer(const std::string& url, const std::string& user, const std::string& pw, bool savePw);
+  static void removeServer(const std::string& serverUrl);
 
 private:
   std::string m_url;

@@ -82,6 +82,8 @@ private:
   Button* drivesBtn;
   Button* favoritesBtn;
   Menu* favoritesMenu;
+  Button* webdavBtn;
+  Menu* webdavMenu;
 #if PLATFORM_ANDROID
   Button* privateDirBtn;
   Button* sharedDirBtn;
@@ -106,6 +108,8 @@ private:
   void rebuildFavoritesMenu();
   std::vector<std::string> getFavorites() const;
   void setFavorites(const std::vector<std::string>& favs);
+  void rebuildWebdavMenu();
+  void addWebdavServer();
   void createUI();
   bool convertDocuments(FSPath src);
   void zoomListView(int step);
