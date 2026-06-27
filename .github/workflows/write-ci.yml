@@ -2,25 +2,19 @@ name: Write CI
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "webdav" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "webdav" ]
+  workflow_dispatch:
 
 jobs:
   linux-build:
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout
-      run: git clone --recurse-submodules https://github.com/styluslabs/Write
-    #- run: git clone --recurse-submodules https://github.com/styluslabs/Write
-    # can't switch branch of submodule from actions/checkout: https://github.com/actions/checkout/issues/1815
-    #- run: git switch write-linux
-    #  working-directory: Write/SDL
-    #- uses: actions/checkout@v4
-    #  with:
-    #    submodules: recursive
+      run: git clone --recurse-submodules --branch "${GITHUB_REF_NAME}" "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" Write
     - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libcurl4-openssl-dev libsecret-1-dev
     - name: Build SDL
       working-directory: Write/SDL
       run: |
@@ -46,6 +40,8 @@ jobs:
 
   windows-build:
     runs-on: windows-latest
+    # WebDAV work is validated on Linux first; Windows/Android still build upstream master
+    if: github.ref_name == 'master'
     steps:
     - name: Checkout
       run: git clone --recurse-submodules https://github.com/styluslabs/Write
@@ -75,6 +71,7 @@ jobs:
 
   android-build:
     runs-on: ubuntu-latest
+    if: github.ref_name == 'master'
     steps:
     - name: Checkout
       run: git clone --recurse-submodules https://github.com/styluslabs/Write

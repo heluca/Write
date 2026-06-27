@@ -20,7 +20,7 @@
 	ignore = untracked
 [submodule "ulib"]
 	path = ulib
-	url = https://github.com/styluslabs/ulib.git
+	url = https://github.com/heluca/ulib.git
 	ignore = untracked
 [submodule "usvg"]
 	path = usvg
