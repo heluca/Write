@@ -229,12 +229,34 @@ else ifneq ($(BUILD_SHARED_LIBRARY),)
 # Uses SDL 2.0.9 (branch write-android)
 # ./start_gradle assembleRelease && cp app/build/outputs/apk/release/app-release.apk . && ./resignapk.sh app-release.apk ~/styluslabs.keystore && mv signed_app-release.apk write300.apk
 
-# working dir is android/app apparently
-ifneq ($(shell git -C ../../../SDL rev-parse --abbrev-ref HEAD),write-android)
+# locate SDL relative to this makefile (syncscribble dir) rather than a fixed CWD
+ifneq ($(shell git -C $(dir $(lastword $(MAKEFILE_LIST)))../SDL rev-parse --abbrev-ref HEAD),write-android)
   $(error Not on write-android branch!)
 endif
 
 LOCAL_PATH := $(call my-dir)
+
+# Prebuilt static libcurl + mbedTLS for WebDAV (built by android/build-curl.sh, committed
+# under android/prebuilt/<abi>/). $(TARGET_ARCH_ABI) selects the right per-ABI archive.
+PREBUILT := $(LOCAL_PATH)/android/prebuilt
+include $(CLEAR_VARS)
+LOCAL_MODULE := curl_prebuilt
+LOCAL_SRC_FILES := android/prebuilt/$(TARGET_ARCH_ABI)/lib/libcurl.a
+LOCAL_EXPORT_C_INCLUDES := $(PREBUILT)/include
+include $(PREBUILT_STATIC_LIBRARY)
+include $(CLEAR_VARS)
+LOCAL_MODULE := mbedtls_prebuilt
+LOCAL_SRC_FILES := android/prebuilt/$(TARGET_ARCH_ABI)/lib/libmbedtls.a
+include $(PREBUILT_STATIC_LIBRARY)
+include $(CLEAR_VARS)
+LOCAL_MODULE := mbedx509_prebuilt
+LOCAL_SRC_FILES := android/prebuilt/$(TARGET_ARCH_ABI)/lib/libmbedx509.a
+include $(PREBUILT_STATIC_LIBRARY)
+include $(CLEAR_VARS)
+LOCAL_MODULE := mbedcrypto_prebuilt
+LOCAL_SRC_FILES := android/prebuilt/$(TARGET_ARCH_ABI)/lib/libmbedcrypto.a
+include $(PREBUILT_STATIC_LIBRARY)
+
 include $(CLEAR_VARS)
 
 SOURCES += android/androidhelper.cpp
@@ -243,13 +265,15 @@ SOURCES += android/androidhelper.cpp
 LOCAL_MODULE := main
 
 ALL_INC := $(INC) $(INCSYS) ../SDL/include
-LOCAL_C_INCLUDES := $(addprefix $(LOCAL_PATH)/, $(ALL_INC))
+LOCAL_C_INCLUDES := $(addprefix $(LOCAL_PATH)/, $(ALL_INC)) $(PREBUILT)/include
 
 LOCAL_CFLAGS := $(addprefix -D, $(DEFS))
 LOCAL_CPPFLAGS := -std=c++14 -Wno-unused -Wno-error=format-security
 
 LOCAL_SRC_FILES := $(addprefix $(LOCAL_PATH)/, $(SOURCES))
 LOCAL_SHARED_LIBRARIES := SDL2
+# curl depends on mbedtls; list in dependency order
+LOCAL_STATIC_LIBRARIES := curl_prebuilt mbedtls_prebuilt mbedx509_prebuilt mbedcrypto_prebuilt
 # libandroid needed for ANativeWindow_* fns
 LOCAL_LDLIBS := -lGLESv3 -llog -ljnigraphics -landroid
 

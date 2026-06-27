@@ -1,6 +1,8 @@
 #include $(call all-subdir-makefiles)
 
-# Note that symlinking source dirs is a terrible idea which can create a huge mess when trying to open files,
-#  esp. when debugging
-include /home/mwhite/styluslabs/SDL/Android.mk
-include /home/mwhite/styluslabs/syncscribble/Makefile
+# Include SDL and the Write build relative to this jni dir so the build works on any machine
+# (the original hardcoded /home/mwhite/... paths only worked on the upstream author's box).
+# use absolute paths so $(call my-dir) inside the included makefiles resolves correctly
+MY_JNI_DIR := $(abspath $(call my-dir))
+include $(MY_JNI_DIR)/../../../../../../SDL/Android.mk
+include $(MY_JNI_DIR)/../../../../../Makefile

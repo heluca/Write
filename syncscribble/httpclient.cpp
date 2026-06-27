@@ -66,6 +66,10 @@ HttpResponse HttpRequest::perform(const char* method, IOStream* sink, IOStream* 
   curl_easy_setopt(curl, CURLOPT_URL, m_url.c_str());
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);  // safe for use off the main thread
+#ifdef __ANDROID__
+  // our bundled mbedTLS curl has no built-in CA path; use Android's system trust store
+  curl_easy_setopt(curl, CURLOPT_CAPATH, "/system/etc/security/cacerts");
+#endif
   curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, headerCallback);
   curl_easy_setopt(curl, CURLOPT_HEADERDATA, &resp);
   curl_easy_setopt(curl, CURLOPT_USERAGENT, "Write/WebDAV");
