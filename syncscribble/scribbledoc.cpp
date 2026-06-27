@@ -230,6 +230,8 @@ Document::loadresult_t ScribbleDoc::openDocument(IOStream* strm, bool delayload)
 
 bool ScribbleDoc::saveDocument(const char* filename, Document::saveflags_t flags)
 {
+  if(filename && WebDavStream::isWebDavUrl(filename))
+    return saveDocument(new WebDavStream(filename, "wb"), flags);
   return saveDocument(filename ? new FileStream(filename, "wb+") : NULL, flags);
 }
 

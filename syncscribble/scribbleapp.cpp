@@ -346,8 +346,11 @@ void ScribbleApp::init()
     }
     if(WebDavStream::isWebDavUrl(argDoc.c_str())) {
       // keep URLs out of FSPath/canonicalPath, which would mangle "//"
-      if(activeDoc()->openDocument(argDoc.c_str()) != Document::LOAD_FATAL)
+      if(activeDoc()->openDocument(argDoc.c_str()) != Document::LOAD_FATAL) {
         onLoadFile(activeDoc()->fileName());
+        if(!outDoc.empty() && WebDavStream::isWebDavUrl(outDoc.c_str()))
+          activeDoc()->saveDocument(outDoc.c_str(), Document::SAVE_FORCE);
+      }
       else
         showNotify(fstring(_("\"%s\" could not be opened."), argDoc.c_str()), 2);
       return;
@@ -363,7 +366,11 @@ void ScribbleApp::init()
       Document::loadresult_t res = activeDoc()->openDocument(argInfo.c_str());
       if(res != Document::LOAD_FATAL && res != Document::LOAD_EMPTYDOC) {
         onLoadFile(activeDoc()->fileName());
-        if(!outDoc.empty()) {
+        if(!outDoc.empty() && WebDavStream::isWebDavUrl(outDoc.c_str())) {
+          if(!activeDoc()->saveDocument(outDoc.c_str(), Document::SAVE_FORCE))
+            PLATFORM_LOG("Error saving %s\n", outDoc.c_str());
+        }
+        else if(!outDoc.empty()) {
           FSPath outinfo(outDoc);
           if(outinfo.exists())
             PLATFORM_LOG("Error: output file %s already exists\n", outinfo.c_str());

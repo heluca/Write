@@ -30,6 +30,12 @@ static size_t readFromStream(char* ptr, size_t size, size_t nmemb, void* userdat
   return static_cast<IOStream*>(userdata)->read(ptr, n);
 }
 
+// lets curl rewind the upload body to resend it (e.g. after a 401 auth challenge)
+static int seekStream(void* userdata, curl_off_t offset, int origin)
+{
+  return static_cast<IOStream*>(userdata)->seek((long)offset, origin) ? CURL_SEEKFUNC_OK : CURL_SEEKFUNC_FAIL;
+}
+
 // capture ETag / Last-Modified from response headers
 static size_t headerCallback(char* buffer, size_t size, size_t nitems, void* userdata)
 {
@@ -65,7 +71,9 @@ HttpResponse HttpRequest::perform(const char* method, IOStream* sink, IOStream* 
   curl_easy_setopt(curl, CURLOPT_USERAGENT, "Write/WebDAV");
 
   if(!m_user.empty()) {
-    curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (long)CURLAUTH_BASIC | CURLAUTH_DIGEST);
+    // negotiate whatever auth the server offers (Basic/Digest); on PUT this means a 401 challenge
+    // then a body resend, which needs CURLOPT_SEEKFUNCTION (set below) to rewind the upload stream
+    curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (long)CURLAUTH_ANY);
     curl_easy_setopt(curl, CURLOPT_USERNAME, m_user.c_str());
     curl_easy_setopt(curl, CURLOPT_PASSWORD, m_pass.c_str());
   }
@@ -82,6 +90,8 @@ HttpResponse HttpRequest::perform(const char* method, IOStream* sink, IOStream* 
     curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
     curl_easy_setopt(curl, CURLOPT_READFUNCTION, readFromStream);
     curl_easy_setopt(curl, CURLOPT_READDATA, source);
+    curl_easy_setopt(curl, CURLOPT_SEEKFUNCTION, seekStream);
+    curl_easy_setopt(curl, CURLOPT_SEEKDATA, source);
     curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, (curl_off_t)srclen);
   }
   else {  // PROPFIND and other WebDAV verbs
