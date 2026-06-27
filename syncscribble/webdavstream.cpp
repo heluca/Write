@@ -4,6 +4,8 @@
 #include "scribbleconfig.h"
 #include "ulib/stringutil.h"
 #include "ulib/md5.h"
+#include "pugixml.hpp"
+#include <time.h>
 
 bool WebDavStream::isWebDavUrl(const char* path)
 {
@@ -21,9 +23,87 @@ bool WebDavStream::isWebDavUrl(const char* path)
 // dav:// -> http://, davs:// -> https://  (leave http/https as-is)
 static std::string toHttpUrl(const std::string& url)
 {
-  if(url.compare(0, 6, "davs://") == 0) return "https://" + url.substr(7);
+  if(url.compare(0, 7, "davs://") == 0) return "https://" + url.substr(7);
   if(url.compare(0, 6, "dav://") == 0) return "http://" + url.substr(6);
   return url;
+}
+
+// percent-decode a WebDAV href (server returns encoded paths)
+static std::string urlDecode(const std::string& s)
+{
+  std::string out;
+  for(size_t i = 0; i < s.size(); ++i) {
+    if(s[i] == '%' && i + 2 < s.size()) {
+      out += (char)strtol(s.substr(i+1, 2).c_str(), NULL, 16);
+      i += 2;
+    }
+    else
+      out += s[i];
+  }
+  return out;
+}
+
+bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries)
+{
+  std::string httpurl = toHttpUrl(url);
+  if(httpurl.empty() || httpurl.back() != '/')
+    httpurl += '/';
+  HttpRequest req(httpurl);
+  std::string user = ScribbleApp::cfg->String("webdavUser", "");
+  if(!user.empty())
+    req.auth(user, ScribbleApp::cfg->String("webdavPassword", ""));
+  MemStream body;
+  HttpResponse resp = req.propfind(&body, 1);
+  if(resp.status != 207)
+    return false;
+
+  pugi::xml_document doc;
+  if(!doc.load_buffer(body.data(), body.size()))
+    return false;
+  // the collection's own path, to skip its self-entry and to derive child names
+  std::string basepath = urlDecode(httpurl.substr(httpurl.find('/', httpurl.find("://") + 3)));
+
+  // namespaces vary (D:, lp1:, etc.), so match by local name
+  for(pugi::xml_node resp_node = doc.first_child().first_child(); resp_node; resp_node = resp_node.next_sibling()) {
+    if(!StringRef(resp_node.name()).endsWith("response"))
+      continue;
+    WebDavEntry e;
+    for(pugi::xml_node c = resp_node.first_child(); c; c = c.next_sibling()) {
+      StringRef cn(c.name());
+      if(cn.endsWith("href"))
+        e.name = urlDecode(c.text().as_string());
+      else if(cn.endsWith("propstat")) {
+        pugi::xml_node prop = c.child("D:prop");
+        if(!prop) { for(pugi::xml_node p = c.first_child(); p; p = p.next_sibling()) if(StringRef(p.name()).endsWith("prop")) { prop = p; break; } }
+        for(pugi::xml_node p = prop.first_child(); p; p = p.next_sibling()) {
+          StringRef pn(p.name());
+          if(pn.endsWith("resourcetype")) {
+            for(pugi::xml_node r = p.first_child(); r; r = r.next_sibling())
+              if(StringRef(r.name()).endsWith("collection")) e.isDir = true;
+          }
+          else if(pn.endsWith("getcontentlength"))
+            e.size = atol(p.text().as_string());
+          else if(pn.endsWith("getlastmodified")) {
+            struct tm tm = {};
+            if(strptime(p.text().as_string(), "%a, %d %b %Y %H:%M:%S", &tm))
+              e.mtime = timegm(&tm);
+          }
+        }
+      }
+    }
+    // e.name is the full href path; reduce to the child name relative to the collection
+    std::string path = e.name;
+    if(!path.empty() && path.back() == '/') path.pop_back();
+    std::string leaf = path.substr(path.find_last_of('/') + 1);
+    // skip the collection's own entry
+    std::string selfpath = basepath;
+    if(!selfpath.empty() && selfpath.back() == '/') selfpath.pop_back();
+    if(leaf.empty() || path == selfpath || e.name == basepath)
+      continue;
+    e.name = e.isDir ? leaf + "/" : leaf;
+    entries.push_back(e);
+  }
+  return true;
 }
 
 WebDavStream::WebDavStream(const char* url, const char* mode) : m_url(toHttpUrl(url))

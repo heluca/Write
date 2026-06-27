@@ -2,6 +2,7 @@
 #include "documentlist.h"
 
 #include "scribbleapp.h"
+#include "webdavstream.h"
 #include "scribbledoc.h"
 #include "touchwidgets.h"
 
@@ -29,10 +30,15 @@ DocumentList::DocumentList(const char* root, const char* temp) : Window(createWi
 #endif
   // set initial dir - maybe we should do this in MainWindow?
   currDir = ScribbleApp::cfg->String("currFolder");
-  if(!currDir.isAbsolute())
-    currDir = canonicalPath(currDir);
-  if(!currDir.isDir() || !currDir.exists())
-    currDir = docRoot;
+  if(WebDavStream::isWebDavUrl(currDir.c_str())) {
+    // remote folder: existence is verified lazily by setCurrDir's PROPFIND, not stat()
+  }
+  else {
+    if(!currDir.isAbsolute())
+      currDir = canonicalPath(currDir);
+    if(!currDir.isDir() || !currDir.exists())
+      currDir = docRoot;
+  }
 }
 
 void DocumentList::createUI()
@@ -365,12 +371,21 @@ void DocumentList::finish(Result_t res)
 void DocumentList::setCurrDir(const char* path)
 {
   FSPath pathinfo(path);
-  if(!pathinfo.exists())
+  bool remote = WebDavStream::isWebDavUrl(path);
+  // pull the remote listing up front; bail (staying put) if it can't be reached
+  std::vector<WebDavEntry> davEntries;
+  if(remote) {
+    if(!webdavListDir(path, davEntries)) {
+      ScribbleApp::app->showNotify(_("Could not reach the WebDAV server."), 2);
+      return;
+    }
+  }
+  else if(!pathinfo.exists())
     return;
   //if(docListSiloed && !StringRef(pathinfo.c_str()).startsWith(docRoot.c_str())) { pathinfo = docRoot; }
 
   bool hasLegacyDocs = false;
-  bool writable = true; //pathinfo.isWritable();
+  bool writable = !remote; //pathinfo.isWritable();  -- remote create/paste not supported yet
   newDocBtn->setEnabled(writable);
   newFolderBtn->setEnabled(writable);
   // can't paste into read-only folder, obviously
@@ -409,11 +424,24 @@ void DocumentList::setCurrDir(const char* path)
   // update contents
   enum sortBy_t {SORT_NAME, SORT_MTIME};
   sortBy_t sortBy = ScribbleApp::cfg->Int("docListSort") == 1 ? SORT_MTIME : SORT_NAME;
-  std::vector<std::string> allfiles = lsDirectory(pathinfo);
   // extract folders and files we support
   std::vector<std::string> files;
   std::vector<Timestamp> mtimes;
   std::vector<long> fsizes;
+  if(remote) {
+    // already have name/mtime/size from one PROPFIND; no per-file requests (and no thumbnails)
+    for(const WebDavEntry& e : davEntries) {
+      if(e.name.empty() || e.name.front() == '.')
+        continue;
+      if(!isWriteDoc(pathinfo.child(e.name)))
+        continue;
+      files.push_back(e.name);
+      mtimes.push_back(e.mtime);
+      fsizes.push_back(e.size);  // for dirs this is 0; item count not available without extra requests
+    }
+  }
+  else {
+  std::vector<std::string> allfiles = lsDirectory(pathinfo);
   for(const std::string& file : allfiles) {
     if(file.empty() || file.front() == '.')
       continue;
@@ -433,6 +461,7 @@ void DocumentList::setCurrDir(const char* path)
       else
         fsizes.push_back(getFileSize(fileinfo));
     }
+  }
   }
 
   // sort indices instead of names themselves (i.e., argsort)
@@ -475,8 +504,8 @@ void DocumentList::setCurrDir(const char* path)
       container->addChild(folderUseNode->clone());
     else if(!containsWord("svg svgz html htm", fileinfo.extension().c_str()))  //fileinfo.extension() != docFileExt)
       container->addChild(fileUseNode->clone());
-    else if(!ScribbleApp::cfg->Bool("showThumbnail"))
-      container->addChild(fileUseNode->clone());
+    else if(remote || !ScribbleApp::cfg->Bool("showThumbnail"))
+      container->addChild(fileUseNode->clone());  // no per-file download for remote listings
     else {
       Image thumbnail = ScribbleDoc::extractThumbnail(fileinfo.c_str());
       if(!thumbnail.isNull())

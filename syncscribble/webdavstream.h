@@ -8,6 +8,19 @@
 
 #include "ulib/fileutil.h"
 #include <string>
+#include <vector>
+
+struct WebDavEntry
+{
+  std::string name;     // file or directory name (no path), with trailing '/' for collections
+  bool isDir = false;
+  Timestamp mtime = 0;
+  long size = 0;
+};
+
+// list a WebDAV collection via PROPFIND Depth:1; returns false on error (e.g. offline).
+// `url` is a dav://, davs://, http:// or https:// collection URL; credentials come from config.
+bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries);
 
 class WebDavStream : public MemStream
 {
