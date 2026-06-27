@@ -38,8 +38,11 @@ private:
   bool m_open = false;
   bool m_dirty = false;
   bool m_writeMode = false;
+  bool m_offline = false;  // last PUT failed; changes held in local shadow copy
 
   bool doGet();
+  std::string shadowPath() const;
+  void writeShadow();
 };
 
 #endif // WEBDAVSTREAM_H
