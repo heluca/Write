@@ -407,12 +407,18 @@ void DocumentList::rebuildWebdavMenu()
   for(const std::string& server : WebDavStream::servers()) {
     Button* item = webdavMenu->addItem(server.c_str(),
         SvgGui::useFile("icons/cloud.svg"), [this, server](){ setCurrDir(server.c_str()); });
+    // right-click (or long press) a server for Edit / Remove
     SvgGui::setupRightClick(item, [this, server](SvgGui* g, Widget* w, Point p){
-      if(ScribbleApp::messageBox(ScribbleApp::Question, _("Remove server"),
-          fstring(_("Remove WebDAV server %s?"), server.c_str()), {_("Remove"), _("Cancel")}) == _("Remove")) {
-        WebDavStream::removeServer(server);
-        rebuildWebdavMenu();
-      }
+      Menu* ctx = createMenu(Menu::FLOATING, false);
+      ctx->addItem(_("Edit..."), [this, server](){ editWebdavServer(server); });
+      ctx->addItem(_("Remove"), [this, server](){
+        if(ScribbleApp::messageBox(ScribbleApp::Question, _("Remove server"),
+            fstring(_("Remove WebDAV server %s?"), server.c_str()), {_("Remove"), _("Cancel")}) == _("Remove")) {
+          WebDavStream::removeServer(server);
+          rebuildWebdavMenu();
+        }
+      });
+      g->showContextMenu(ctx, p);
     });
   }
   webdavMenu->addSeparator();
@@ -420,12 +426,15 @@ void DocumentList::rebuildWebdavMenu()
       [this](){ addWebdavServer(); });
 }
 
-void DocumentList::addWebdavServer()
+// add a new server (existing empty) or edit one (existing = its base URL)
+void DocumentList::editWebdavServer(const std::string& existing)
 {
+  bool editing = !existing.empty();
   Dialog dialog(createDialogNode());
   TextEdit* urlEdit = createTextEdit(280);
-  urlEdit->setText("https://");
+  urlEdit->setText(editing ? existing.c_str() : "https://");
   TextEdit* userEdit = createTextEdit(280);
+  if(editing) userEdit->setText(WebDavStream::serverUser(existing).c_str());
   TextEdit* passEdit = createTextEdit(280);
   passEdit->editMode = TextEdit::PASSWORD_SHOWLAST;
   bool canSave = SecretStore::available() || ScribbleApp::cfg->Bool("webdavSavePlaintext");
@@ -433,30 +442,41 @@ void DocumentList::addWebdavServer()
   if(savePw) savePw->setChecked(true);
 
   Widget* body = dialog.selectFirst(".body-container");
+  if(editing)
+    body->addWidget(new Widget(createTextNode(_("Leave password blank to keep the current one."))));
   body->addWidget(createTitledRow(_("Server URL"), 0, urlEdit));
   body->addWidget(createTitledRow(_("User"), 0, userEdit));
   body->addWidget(createTitledRow(_("Password"), 0, passEdit));
   if(savePw)
     body->addWidget(createTitledRow(_("Save password"), savePw));
   body->setMargins(8, 8, 0, 8);
-  dialog.setTitle(_("Add WebDAV Server"));
-  dialog.focusedWidget = urlEdit;
+  dialog.setTitle(editing ? _("Edit WebDAV Server") : _("Add WebDAV Server"));
+  dialog.focusedWidget = editing ? passEdit : urlEdit;
   Button* okBtn = dialog.addButton(_("OK"), [&dialog](){ dialog.finish(Dialog::ACCEPTED); });
   dialog.addButton(_("Cancel"), [&dialog](){ dialog.finish(Dialog::CANCELLED); });
   urlEdit->onChanged = [okBtn](const char* s){ okBtn->setEnabled(s && s[0] && strstr(s, "://")); };
-  okBtn->setEnabled(false);
+  okBtn->setEnabled(urlEdit->text().find("://") != std::string::npos);
 
   if(ScribbleApp::execDialog(&dialog) != Dialog::ACCEPTED)
     return;
   std::string url = trimStr(urlEdit->text());
   if(url.empty() || url.find("://") == std::string::npos)
     return;
-  WebDavStream::addServer(url, trimStr(userEdit->text()), trimStr(passEdit->text()),
-      savePw && savePw->isChecked());
+  if(url.back() != '/') url += '/';
+
+  std::string pw = trimStr(passEdit->text());
+  // when editing with a blank password, carry the existing one forward
+  if(editing && pw.empty())
+    pw = WebDavStream::password(existing);
+  // if the URL changed, drop the old entry (and its stored secret) first
+  if(editing && url != existing)
+    WebDavStream::removeServer(existing);
+  WebDavStream::addServer(url, trimStr(userEdit->text()), pw, savePw && savePw->isChecked());
   rebuildWebdavMenu();
-  // jump straight to the new server
-  setCurrDir(WebDavStream::servers().back().c_str());
+  setCurrDir(url.c_str());  // jump to the (new/updated) server
 }
+
+void DocumentList::addWebdavServer() { editWebdavServer(""); }
 
 void DocumentList::rebuildDrivesMenu()
 {
@@ -712,6 +732,8 @@ void DocumentList::setCurrDir(const char* path)
   ScribbleApp::cfg->set("currFolder", currDir.c_str());
 
   // update breadcrumbs
+  // for remote paths, stop at the server root (its base URL) since exists() can't stat a URL
+  std::string davServer = remote ? WebDavStream::serverForUrl(pathinfo.c_str()) : std::string();
   bool ok = true;
   for(Button* breadCrumb : breadCrumbs) {
     breadCrumb->setVisible(ok);
@@ -720,10 +742,17 @@ void DocumentList::setCurrDir(const char* path)
       breadCrumb->setText(title.size() > 20 ? title.substr(0, 17).append("...").c_str() : title.c_str());
       breadCrumb->setShowTitle(true);  // force layout auto adjust
       breadCrumb->onClicked = [this, pathinfo]() { setCurrDir(pathinfo.c_str()); };
-      pathinfo = pathinfo.parent();
-      ok = pathinfo.exists();
-      if(docListSiloed && !StringRef(pathinfo.c_str()).startsWith(docRoot.c_str()))
-        ok = false;
+      if(remote) {
+        // walk up to (but not past) the server root, without local stat()
+        ok = !davServer.empty() && pathinfo.c_str() != davServer && pathinfo.path.size() > davServer.size();
+        pathinfo = pathinfo.parent();
+      }
+      else {
+        pathinfo = pathinfo.parent();
+        ok = pathinfo.exists();
+        if(docListSiloed && !StringRef(pathinfo.c_str()).startsWith(docRoot.c_str()))
+          ok = false;
+      }
     }
   }
 

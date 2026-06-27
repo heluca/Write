@@ -107,6 +107,7 @@ private:
   void setFavorites(const std::vector<std::string>& favs);
   void rebuildWebdavMenu();
   void addWebdavServer();
+  void editWebdavServer(const std::string& existing);
   void rebuildDrivesMenu();
   void createUI();
   bool convertDocuments(FSPath src);
