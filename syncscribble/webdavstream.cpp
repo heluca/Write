@@ -176,6 +176,16 @@ void WebDavStream::writeShadow()
     fs.write(data(), size());
 }
 
+// URL for a "conflict copy" sibling, e.g. .../Note-conflict-20260627T113255.svgz
+static std::string conflictUrl(const std::string& url)
+{
+  char ts[32];
+  time_t now = time(NULL);
+  strftime(ts, sizeof(ts), "%Y%m%dT%H%M%S", gmtime(&now));
+  FSPath p(url);
+  return p.parent().childPath(p.baseName() + "-conflict-" + ts + "." + p.extension());
+}
+
 bool WebDavStream::flush()
 {
   if(!m_dirty)
@@ -185,8 +195,31 @@ bool WebDavStream::flush()
   HttpRequest req(m_url);
   if(!m_user.empty())
     req.auth(m_user, m_pass);
-  HttpResponse resp = req.put(this, size());  // If-Match handling added in Phase 4
+  // If-Match guards against overwriting changes made on another device since we loaded/saved
+  HttpResponse resp = req.put(this, size(), m_etag);
   seek(savedpos);
+
+  if(resp.status == 412) {
+    // the server copy changed under us (edited on another device). Don't overwrite it: save
+    // our version as a separate conflict copy so neither side's work is lost.
+    std::string curl = conflictUrl(m_url);
+    HttpRequest creq(curl);
+    if(!m_user.empty())
+      creq.auth(m_user, m_pass);
+    seek(0);
+    HttpResponse cresp = creq.put(this, size());
+    seek(savedpos);
+    if(cresp.ok()) {
+      m_dirty = false;
+      m_offline = false;
+      remove(shadowPath().c_str());
+      ScribbleApp::app->showNotify(fstring(_("This note was changed on another device. Your version was saved as \"%s\" to avoid losing changes."),
+          FSPath(curl).fileName().c_str()), 2);
+      return true;
+    }
+    // couldn't even save the conflict copy: fall through to offline handling below
+  }
+
   if(!resp.ok()) {
     // offline / server error: keep a local copy and stay dirty so the next save retries.
     // Note: Document::save ignores flush()'s return, so failure must be surfaced here.
