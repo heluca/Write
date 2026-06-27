@@ -265,6 +265,79 @@ public class MainActivity extends SDLActivity implements View.OnTouchListener, V
     startActivity(viewUrlIntent);
   }
 
+  // --- Secret storage (WebDAV passwords) ---
+  // Encrypt with an AES/GCM key held in the AndroidKeyStore (hardware-backed where
+  // available, never leaves the keystore), store the ciphertext+IV in SharedPreferences.
+  // Avoids an AndroidX dependency (this project still uses the legacy support lib).
+  // Called from secretstore.cpp via JNI.
+  private static final String KS_ALIAS = "write_webdav_key";
+  private static final String KS_PROVIDER = "AndroidKeyStore";
+
+  private javax.crypto.SecretKey secretKey() throws Exception
+  {
+    java.security.KeyStore ks = java.security.KeyStore.getInstance(KS_PROVIDER);
+    ks.load(null);
+    if(ks.containsAlias(KS_ALIAS))
+      return ((java.security.KeyStore.SecretKeyEntry) ks.getEntry(KS_ALIAS, null)).getSecretKey();
+    javax.crypto.KeyGenerator kg = javax.crypto.KeyGenerator.getInstance(
+        android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, KS_PROVIDER);
+    kg.init(new android.security.keystore.KeyGenParameterSpec.Builder(KS_ALIAS,
+        android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
+            | android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+        .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+        .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setKeySize(256).build());
+    return kg.generateKey();
+  }
+
+  private android.content.SharedPreferences secretPrefs()
+  {
+    return getSharedPreferences("write_secrets", Context.MODE_PRIVATE);
+  }
+
+  public boolean secretAvailable()
+  {
+    // Keystore requires API 23 (M); below that we have no secure store
+    if(android.os.Build.VERSION.SDK_INT < 23) return false;
+    try { secretKey(); return true; } catch(Exception e) { return false; }
+  }
+
+  public boolean secretStore(String account, String secret)
+  {
+    try {
+      javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+      c.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey());
+      byte[] iv = c.getIV();
+      byte[] ct = c.doFinal(secret.getBytes("UTF-8"));
+      String enc = android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP)
+          + ":" + android.util.Base64.encodeToString(ct, android.util.Base64.NO_WRAP);
+      return secretPrefs().edit().putString(account, enc).commit();
+    }
+    catch(Exception e) { Log.e("secretStore", "encrypt failed", e); return false; }
+  }
+
+  public String secretLookup(String account)
+  {
+    try {
+      String enc = secretPrefs().getString(account, null);
+      if(enc == null) return "";
+      String[] parts = enc.split(":", 2);
+      if(parts.length != 2) return "";
+      byte[] iv = android.util.Base64.decode(parts[0], android.util.Base64.NO_WRAP);
+      byte[] ct = android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP);
+      javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+      c.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey(),
+          new javax.crypto.spec.GCMParameterSpec(128, iv));
+      return new String(c.doFinal(ct), "UTF-8");
+    }
+    catch(Exception e) { Log.e("secretLookup", "decrypt failed", e); return ""; }
+  }
+
+  public boolean secretClear(String account)
+  {
+    return secretPrefs().edit().remove(account).commit();
+  }
+
   public Surface getSDLSurface()
   {
     return getSDLSurfaceView().getHolder().getSurface();

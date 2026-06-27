@@ -1,15 +1,82 @@
 #include "secretstore.h"
 
-// Secret Service (libsecret) is a Linux desktop facility; other platforms get no-op stubs
-// (Android uses its own keystore - a future phase; iOS/Win/Mac keychains likewise TBD).
-#ifndef WEBDAV_USE_LIBSECRET
+#if defined(__ANDROID__)
+// --- Android: AES/GCM key in the AndroidKeyStore, via JNI to MainActivity ---
+#include <jni.h>
+#include <SDL.h>
 
+namespace {
+struct AndroidCall {
+  JNIEnv* env = NULL;
+  jobject activity = NULL;
+  jclass clazz = NULL;
+  jmethodID method = NULL;
+  AndroidCall(const char* name, const char* sig) {
+    env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    if(!env) return;
+    activity = (jobject)SDL_AndroidGetActivity();
+    if(!activity) return;
+    clazz = env->GetObjectClass(activity);
+    if(clazz) method = env->GetMethodID(clazz, name, sig);
+  }
+  ~AndroidCall() {
+    if(activity) env->DeleteLocalRef(activity);
+    if(clazz) env->DeleteLocalRef(clazz);
+  }
+};
+}
+
+bool SecretStore::available()
+{
+  AndroidCall c("secretAvailable", "()Z");
+  return c.method && c.env->CallBooleanMethod(c.activity, c.method);
+}
+
+bool SecretStore::store(const std::string& account, const std::string& secret)
+{
+  AndroidCall c("secretStore", "(Ljava/lang/String;Ljava/lang/String;)Z");
+  if(!c.method) return false;
+  jstring ja = c.env->NewStringUTF(account.c_str());
+  jstring js = c.env->NewStringUTF(secret.c_str());
+  jboolean ok = c.env->CallBooleanMethod(c.activity, c.method, ja, js);
+  c.env->DeleteLocalRef(ja);  c.env->DeleteLocalRef(js);
+  return ok;
+}
+
+std::string SecretStore::lookup(const std::string& account)
+{
+  AndroidCall c("secretLookup", "(Ljava/lang/String;)Ljava/lang/String;");
+  if(!c.method) return std::string();
+  jstring ja = c.env->NewStringUTF(account.c_str());
+  jstring jr = (jstring)c.env->CallObjectMethod(c.activity, c.method, ja);
+  c.env->DeleteLocalRef(ja);
+  if(!jr) return std::string();
+  const char* s = c.env->GetStringUTFChars(jr, NULL);
+  std::string result(s ? s : "");
+  if(s) c.env->ReleaseStringUTFChars(jr, s);
+  c.env->DeleteLocalRef(jr);
+  return result;
+}
+
+bool SecretStore::clear(const std::string& account)
+{
+  AndroidCall c("secretClear", "(Ljava/lang/String;)Z");
+  if(!c.method) return false;
+  jstring ja = c.env->NewStringUTF(account.c_str());
+  jboolean ok = c.env->CallBooleanMethod(c.activity, c.method, ja);
+  c.env->DeleteLocalRef(ja);
+  return ok;
+}
+
+#elif !defined(WEBDAV_USE_LIBSECRET)
+// Other platforms with no keychain backend wired yet: no-op stubs (iOS/Win/Mac keychains TBD)
 bool SecretStore::available() { return false; }
 bool SecretStore::store(const std::string&, const std::string&) { return false; }
 std::string SecretStore::lookup(const std::string&) { return std::string(); }
 bool SecretStore::clear(const std::string&) { return false; }
 
 #else
+// --- Linux desktop: freedesktop Secret Service (libsecret) ---
 #include <libsecret/secret.h>
 
 // schema for Write's WebDAV passwords; "account" attribute holds the server URL
