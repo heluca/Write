@@ -80,7 +80,7 @@ void DocumentList::createUI()
 
   // WebDAV servers: list configured servers + "Add server..."; available on all platforms
   webdavMenu = createMenu(Menu::VERT_LEFT, false);
-  webdavBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_cloud.svg"), _("WebDAV"), true);
+  webdavBtn = createToolbutton(SvgGui::useFile("icons/cloud.svg"), _("WebDAV"), true);
   webdavBtn->setMenu(webdavMenu);
   rebuildWebdavMenu();
 
@@ -93,43 +93,12 @@ void DocumentList::createUI()
   Widget* stretch = createStretch();
 
   Toolbar* mainToolbar = createToolbar();
-#if PLATFORM_WIN || PLATFORM_ANDROID
-  Menu* driveMenu = createMenu(Menu::VERT_RIGHT, false);  // no icons
-  drivesBtn = createToolbutton(SvgGui::useFile("icons/ic_drive.svg"), _("Drives"));
-#if PLATFORM_WIN
-  drivesBtn->setShowTitle(true);
-  auto driveNames = lsDrives();
-  for(std::string& drive : driveNames) {
-    std::string letter = drive.substr(0, 2);
-    std::string title = drive.size() > 2 ? drive.substr(3) + " (" + letter + ")" : letter;
-    Button* item = createMenuItem(title.c_str());
-    item->onClicked = [this, letter]() { setCurrDir((letter + "/").c_str()); };
-    driveMenu->addItem(item);
-  }
-#elif PLATFORM_ANDROID
-  drivesBtn->setShowTitle(false);
-  sharedDirBtn = createMenuItem("styluslabs/write");
-  sharedDirBtn->onClicked = [this]() {
-    if(!ScribbleApp::hasAndroidPermission()) {
-      ScribbleApp::cfg->set("currFolder", "/sdcard/styluslabs/write/");  // so we open after restarting
-      if(!ScribbleApp::requestAndroidPermission())
-        ScribbleApp::cfg->set("currFolder", currDir.c_str());  // user canceled!
-    }
-    else if(createPath("/sdcard/styluslabs/write/"))
-      setCurrDir("/sdcard/styluslabs/write/");
-  };
-  driveMenu->addItem(sharedDirBtn);
-  privateDirBtn = createMenuItem("Android/data");
-  privateDirBtn->onClicked = [this]() {
-    const char* appstorage = SDL_AndroidGetExternalStoragePath();
-    setCurrDir(appstorage ? appstorage : "/sdcard/Android/data/com.styluslabs.writeqt/files");
-  };
-  driveMenu->addItem(privateDirBtn);
-#endif
-  drivesBtn->setMenu(driveMenu);
-  drivesBtn->setVisible(false);
+  // Drives/roots button - quick switch between drives/mount points, always visible on all platforms
+  drivesMenu = createMenu(Menu::VERT_LEFT, false);
+  drivesBtn = createToolbutton(SvgGui::useFile("icons/ic_drive.svg"), _("Drives"), true);
+  drivesBtn->setMenu(drivesMenu);
+  rebuildDrivesMenu();
   mainToolbar->addWidget(drivesBtn);
-#endif
   mainToolbar->addWidget(webdavBtn);
   mainToolbar->addWidget(favoritesBtn);
   mainToolbar->addWidget(breadCrumbs[1]);
@@ -437,7 +406,7 @@ void DocumentList::rebuildWebdavMenu()
 
   for(const std::string& server : WebDavStream::servers()) {
     Button* item = webdavMenu->addItem(server.c_str(),
-        SvgGui::useFile("icons/ic_menu_cloud.svg"), [this, server](){ setCurrDir(server.c_str()); });
+        SvgGui::useFile("icons/cloud.svg"), [this, server](){ setCurrDir(server.c_str()); });
     SvgGui::setupRightClick(item, [this, server](SvgGui* g, Widget* w, Point p){
       if(ScribbleApp::messageBox(ScribbleApp::Question, _("Remove server"),
           fstring(_("Remove WebDAV server %s?"), server.c_str()), {_("Remove"), _("Cancel")}) == _("Remove")) {
@@ -487,6 +456,57 @@ void DocumentList::addWebdavServer()
   rebuildWebdavMenu();
   // jump straight to the new server
   setCurrDir(WebDavStream::servers().back().c_str());
+}
+
+void DocumentList::rebuildDrivesMenu()
+{
+  if(gui())
+    gui()->deleteContents(drivesMenu->selectFirst(".child-container"));
+
+  auto addRoot = [this](const std::string& label, const std::string& path){
+    Button* item = drivesMenu->addItem(label.c_str(), SvgGui::useFile("icons/ic_drive.svg"),
+        [this, path](){ setCurrDir(path.c_str()); });
+    return item;
+  };
+
+#if PLATFORM_WIN
+  for(std::string& drive : lsDrives()) {
+    std::string letter = drive.substr(0, 2);
+    std::string title = drive.size() > 2 ? drive.substr(3) + " (" + letter + ")" : letter;
+    addRoot(title, letter + "/");
+  }
+#elif PLATFORM_ANDROID
+  drivesMenu->addItem("styluslabs/write", SvgGui::useFile("icons/ic_drive.svg"), [this](){
+    if(!ScribbleApp::hasAndroidPermission()) {
+      ScribbleApp::cfg->set("currFolder", "/sdcard/styluslabs/write/");
+      if(!ScribbleApp::requestAndroidPermission())
+        ScribbleApp::cfg->set("currFolder", currDir.c_str());
+    }
+    else if(createPath("/sdcard/styluslabs/write/"))
+      setCurrDir("/sdcard/styluslabs/write/");
+  });
+  drivesMenu->addItem("Android/data", SvgGui::useFile("icons/ic_drive.svg"), [this](){
+    const char* appstorage = SDL_AndroidGetExternalStoragePath();
+    setCurrDir(appstorage ? appstorage : "/sdcard/Android/data/com.styluslabs.writeqt/files");
+  });
+#else
+  // Linux/Mac: filesystem root, home, and any mounted removable media
+  addRoot("/ (root)", "/");
+  const char* home = getenv("HOME");
+  if(home && home[0])
+    addRoot(_("Home"), std::string(home) + "/");
+  const char* user = getenv("USER");
+  for(const char* base : {"/media", "/run/media", "/mnt", "/Volumes"}) {
+    FSPath basedir(std::string(base) + "/");
+    // /media/<user> and /run/media/<user> on Linux, /Volumes on Mac, /mnt directly
+    if((StringRef(base) == "/media" || StringRef(base) == "/run/media") && user && user[0])
+      basedir = FSPath(std::string(base) + "/" + user + "/");
+    if(basedir.exists())
+      for(const std::string& m : lsDirectory(basedir))
+        if(!m.empty() && m.front() != '.')
+          addRoot(m.back() == '/' ? m.substr(0, m.size()-1) : m, basedir.childPath(m));
+  }
+#endif
 }
 
 void DocumentList::finish(Result_t res)
@@ -706,14 +726,6 @@ void DocumentList::setCurrDir(const char* path)
         ok = false;
     }
   }
-#if PLATFORM_WIN
-  drivesBtn->setVisible(currDir.fileName().back() == ':');
-#elif PLATFORM_ANDROID
-  drivesBtn->setVisible(!breadCrumbs.back()->isVisible());
-  if(drivesBtn->isVisible())
-    privateDirBtn->setChecked(StringRef(currDir.c_str()).contains("Android/data/com.styluslabs.writeqt"));
-    //sharedDirBtn->setChecked(!privateDirBtn->isChecked());
-#endif
 
   if(hasLegacyDocs && ScribbleApp::cfg->Bool("askConvertDocs")) {
     auto promptres = ScribbleApp::messageBox(ScribbleApp::Question, _("Convert Documents"),

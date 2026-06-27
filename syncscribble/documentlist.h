@@ -80,14 +80,11 @@ private:
   std::unique_ptr<SvgNode> gridItemProto;
   std::vector<Button*> breadCrumbs;
   Button* drivesBtn;
+  Menu* drivesMenu;
   Button* favoritesBtn;
   Menu* favoritesMenu;
   Button* webdavBtn;
   Menu* webdavMenu;
-#if PLATFORM_ANDROID
-  Button* privateDirBtn;
-  Button* sharedDirBtn;
-#endif
 
   std::unique_ptr<SvgUse> fileUseNode;
   std::unique_ptr<SvgUse> folderUseNode;
@@ -110,6 +107,7 @@ private:
   void setFavorites(const std::vector<std::string>& favs);
   void rebuildWebdavMenu();
   void addWebdavServer();
+  void rebuildDrivesMenu();
   void createUI();
   bool convertDocuments(FSPath src);
   void zoomListView(int step);
