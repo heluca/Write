@@ -74,7 +74,12 @@ jobs:
     - name: Build Write
       shell: cmd
       working-directory: Write/syncscribble
-      run: ..\..\make.exe SHELL=cmd.exe DEBUG=0 zip
+      run: ..\..\make.exe SHELL=cmd.exe DEBUG=0 zip > build.log 2>&1 || (type build.log & exit /b 1)
+    # failures become annotations, which are visible via the API without repo auth
+    - name: Surface build errors as annotations
+      if: ${{ failure() }}
+      shell: bash
+      run: grep -E "error [A-Z]*[0-9]+|fatal error|Error [0-9]+" Write/syncscribble/build.log | head -10 | sed 's/^/::error::/' || echo "::error::no error lines matched in build.log"
     # SSH session to debug workflow; time-limited so a failure can't hang the job for hours
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3

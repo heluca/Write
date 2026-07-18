@@ -7,6 +7,8 @@
 #include "ulib/md5.h"
 #include "pugixml.hpp"
 #include <time.h>
+#include <string.h>
+#include <stdio.h>
 #include <map>
 
 // passwords entered for "prompt every session" mode (keychain off, plaintext off), keyed by URL
