@@ -376,17 +376,23 @@ void DocumentList::rebuildFavoritesMenu()
     // show a friendly label: host for WebDAV, folder name for local paths
     std::string label = WebDavStream::isWebDavUrl(fav.c_str()) ? fav : FSPath(fav).fileName();
     if(label.empty()) label = fav;
-    Button* item = favoritesMenu->addItem(label.c_str(),
-        SvgGui::useFile(WebDavStream::isWebDavUrl(fav.c_str()) ? "icons/ic_drive.svg" : "icons/ic_folder.svg"),
-        [this, fav](){ setCurrDir(fav.c_str()); });
-    // right-click to remove (auto WebDAV entry can't be removed here - manage it in settings)
+    Button* item = createMenuItem(label.c_str(),
+        SvgGui::useFile(WebDavStream::isWebDavUrl(fav.c_str()) ? "icons/ic_drive.svg" : "icons/ic_folder.svg"));
+    setupMenuItem(item);
+    item->node->setAttribute("box-anchor", "hfill");
+    item->onClicked = [this, fav](){ setCurrDir(fav.c_str()); };
+    Widget* row = createRow({item}, "", "", "hfill");
+    // X button to remove (auto WebDAV entry can't be removed here - manage it via the cloud menu)
     if(!isCfgDav) {
-      SvgGui::setupRightClick(item, [this, fav](SvgGui* g, Widget* w, Point p){
+      Button* removeBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_cancel.svg"), _("Remove favorite"));
+      removeBtn->onClicked = [this, fav](){
         std::vector<std::string> f = getFavorites();
         f.erase(std::remove(f.begin(), f.end(), fav), f.end());
-        setFavorites(f);
-      });
+        setFavorites(f);  // rebuilds this menu
+      };
+      row->addWidget(removeBtn);
     }
+    favoritesMenu->addWidget(row);
   }
   favoritesMenu->addSeparator();
   favoritesMenu->addItem(_("Add current folder"), [this](){
@@ -405,21 +411,25 @@ void DocumentList::rebuildWebdavMenu()
     gui()->deleteContents(webdavMenu->selectFirst(".child-container"));
 
   for(const std::string& server : WebDavStream::servers()) {
-    Button* item = webdavMenu->addItem(server.c_str(),
-        SvgGui::useFile("icons/cloud.svg"), [this, server](){ setCurrDir(server.c_str()); });
-    // right-click (or long press) a server for Edit / Remove
-    SvgGui::setupRightClick(item, [this, server](SvgGui* g, Widget* w, Point p){
-      Menu* ctx = createMenu(Menu::FLOATING, false);
-      ctx->addItem(_("Edit..."), [this, server](){ editWebdavServer(server); });
-      ctx->addItem(_("Remove"), [this, server](){
-        if(ScribbleApp::messageBox(ScribbleApp::Question, _("Remove server"),
-            fstring(_("Remove WebDAV server %s?"), server.c_str()), {_("Remove"), _("Cancel")}) == _("Remove")) {
-          WebDavStream::removeServer(server);
-          rebuildWebdavMenu();
-        }
-      });
-      g->showContextMenu(ctx, p);
-    });
+    Button* item = createMenuItem(server.c_str(), SvgGui::useFile("icons/cloud.svg"));
+    setupMenuItem(item);
+    item->node->setAttribute("box-anchor", "hfill");
+    item->onClicked = [this, server](){ setCurrDir(server.c_str()); };
+    Button* editBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_draw.svg"), _("Edit server"));
+    editBtn->onClicked = [this, server](){
+      gui()->closeMenus();
+      editWebdavServer(server);
+    };
+    Button* removeBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_discard.svg"), _("Remove server"));
+    removeBtn->onClicked = [this, server](){
+      gui()->closeMenus();
+      if(ScribbleApp::messageBox(ScribbleApp::Question, _("Remove server"),
+          fstring(_("Remove WebDAV server %s?"), server.c_str()), {_("Remove"), _("Cancel")}) == _("Remove")) {
+        WebDavStream::removeServer(server);
+        rebuildWebdavMenu();
+      }
+    };
+    webdavMenu->addWidget(createRow({item, editBtn, removeBtn}, "", "", "hfill"));
   }
   webdavMenu->addSeparator();
   webdavMenu->addItem(_("Add server..."), SvgGui::useFile("icons/ic_menu_add_doc.svg"),
@@ -548,8 +558,29 @@ void DocumentList::setCurrDir(const char* path)
   if(remote) {
     if(!ScribbleApp::app->ensureWebdavPassword())
       return;  // user cancelled the password prompt
-    if(!webdavListDir(path, davEntries)) {
-      ScribbleApp::app->showNotify(_("Could not reach the WebDAV server."), 2);
+    WebDavError err;
+    if(!webdavListDir(path, davEntries, &err)) {
+      std::string msg;
+      if(err.status == 401 || err.status == 403)
+        msg = _("Authentication failed. Check the user name and password.");
+      else if(err.status == 404)
+        msg = _("Folder not found on the server. Check the URL path.");
+      else if(err.status == 0)
+        msg = err.message.empty() ? _("Could not connect to the server.")
+            : fstring(_("Could not connect: %s"), err.message.c_str());
+      else if(err.status == 207)
+        msg = _("The server sent an invalid folder listing.");
+      else if(err.status >= 200 && err.status < 300)
+        msg = _("The server reply was not a WebDAV listing. Check that the URL is a WebDAV folder.");
+      else
+        msg = fstring(_("The server returned HTTP error %ld."), err.status);
+      // a wrong password or URL is fixable in place, so offer the edit dialog with the error
+      std::string server = WebDavStream::serverForUrl(path);
+      if(!server.empty() && ScribbleApp::messageBox(ScribbleApp::Warning, _("WebDAV"),
+          msg, {_("Edit Server..."), _("Cancel")}) == _("Edit Server..."))
+        editWebdavServer(server);
+      else if(server.empty())
+        ScribbleApp::app->showNotify(msg, 2);
       return;
     }
   }

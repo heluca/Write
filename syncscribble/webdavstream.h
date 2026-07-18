@@ -18,9 +18,17 @@ struct WebDavEntry
   long size = 0;
 };
 
+// failure details for webdavListDir: status is the HTTP status code (0 if the request never
+// completed, in which case message is the libcurl transport error, e.g. DNS/TLS/timeout)
+struct WebDavError
+{
+  long status = 0;
+  std::string message;
+};
+
 // list a WebDAV collection via PROPFIND Depth:1; returns false on error (e.g. offline).
 // `url` is a dav://, davs://, http:// or https:// collection URL; credentials come from config.
-bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries);
+bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries, WebDavError* err = NULL);
 
 class WebDavStream : public MemStream
 {

@@ -180,7 +180,7 @@ static std::string urlDecode(const std::string& s)
   return out;
 }
 
-bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries)
+bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries, WebDavError* err)
 {
   std::string httpurl = toHttpUrl(url);
   if(httpurl.empty() || httpurl.back() != '/')
@@ -191,12 +191,16 @@ bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries)
     req.auth(user, WebDavStream::password(httpurl));
   MemStream body;
   HttpResponse resp = req.propfind(&body, 1);
-  if(resp.status != 207)
+  if(resp.status != 207) {
+    if(err) { err->status = resp.status;  err->message = resp.error; }
     return false;
+  }
 
   pugi::xml_document doc;
-  if(!doc.load_buffer(body.data(), body.size()))
+  if(!doc.load_buffer(body.data(), body.size())) {
+    if(err) { err->status = resp.status;  err->message = "invalid PROPFIND response"; }
     return false;
+  }
   // the collection's own path, to skip its self-entry and to derive child names
   std::string basepath = urlDecode(httpurl.substr(httpurl.find('/', httpurl.find("://") + 3)));
 
