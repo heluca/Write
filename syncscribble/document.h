@@ -36,6 +36,7 @@ public:
 
   std::unique_ptr<IOStream> blockStream;
   std::vector<bgz_block_info_t> blockInfo;
+  std::string bgzHeader;  // header block last written to or read from bgz file
 
   enum loadresult_t {LOAD_OK=0, LOAD_FATAL=-1, LOAD_NONFATAL=-2, LOAD_EMPTYDOC=-3, LOAD_NEWERVERSION=-4, LOAD_NONWRITE=-5};
   // document format version

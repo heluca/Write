@@ -29,10 +29,12 @@ static const char* HTML_SKELETON =
 " </body>\n"
 "</html>\n";
 
-// these apply to .svg and .svgz formats
+// these apply to .svg and .svgz formats; format string taking document width and height - explicit width and
+//  height attributes are needed on the top-level <svg> because renderers not using the CSS below (e.g. iOS
+//  QuickLook) fall back to the SVG default of 300x150 - see svgwg.org/specs/integration/#svg-css-sizing
 static const char* SVGZ_HEADER =
-R"(<svg id="write-document" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-<rect id="write-doc-background" width="100%" height="100%" fill="#808080"/>
+R"(<svg id="write-document" width="%.0f" height="%.0f" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<rect id="write-doc-background" width="100%%" height="100%%" fill="#808080"/>
 )";
 
 // Inkscape, e.g., doesn't like width,height=100% on rect
@@ -147,7 +149,12 @@ bool Document::save(IOStream* outstrm, const char* thumb, saveflags_t flags)
   std::string outstring;
   size_t pos = 0;
   if(svgtop) {
-    *outstrm << SVGZ_HEADER << "<defs id=\"write-defs\">\n";
+    Dim docheight = 0, docwidth = 0;
+    for(Page* p : pages) {
+      docheight += p->props.height + 2*SVGZ_BORDER;
+      docwidth = std::max(docwidth, p->props.width);
+    }
+    *outstrm << fstring(SVGZ_HEADER, docwidth + 2*SVGZ_BORDER, docheight) << "<defs id=\"write-defs\">\n";
     if(thumb)
       *outstrm << "<image id='thumbnail' xlink:href='data:image/png;base64," << thumb << "'/>\n\n";
     pugi::xml_node cfgnode = getConfigNode();
@@ -253,6 +260,17 @@ bool Document::saveBgz(IOStream* outstrm, const char* thumb, saveflags_t flags)
   uint32_t len = 0;
   int nout = 0;
 
+  // partial save reuses the compressed header block, so if the header (which includes document width and
+  //  height) has changed, we must write the whole file
+  Dim docheight = 0, docwidth = 0;
+  for(Page* p : pages) {
+    docheight += p->props.height + 2*SVGZ_BORDER;
+    docwidth = std::max(docwidth, p->props.width);
+  }
+  std::string header = fstring(SVGZ_HEADER, docwidth + 2*SVGZ_BORDER, docheight + SVGZ_BORDER);
+  if(header != bgzHeader)
+    flags &= ~SAVE_BGZ_PARTIAL;
+
   size_t pagenum = 0;
   if((flags & SAVE_BGZ_PARTIAL))  {
     // find first dirty page
@@ -282,12 +300,13 @@ bool Document::saveBgz(IOStream* outstrm, const char* thumb, saveflags_t flags)
       return false;
     bgz_header(zoutstrm, MAX_BLOCK_INFO_COUNT*sizeof(bgz_block_info_t));
     blockInfo.push_back({uint32_t(outstrm->tell()), crc_32, len, 0});
-    tempstrm << SVGZ_HEADER;
+    tempstrm << header;
     tempstrm.seek(0);
     nout = miniz_go(level | MINIZ_GZ_NO_FINISH, ztempstrm, zoutstrm, &crc_32);
     if(nout < 0) return false;
     len += (uint32_t)nout;
     blockInfo.push_back({uint32_t(outstrm->tell()), crc_32, len, 0});
+    bgzHeader = header;
   }
   else {
     // writing partial file starting at pagenum
@@ -393,6 +412,10 @@ Document::loadresult_t Document::loadBgzDoc(IOStream* instrm)
         for(; pg; pg = pg.next_sibling())
           insertPage(new Page(pg.attribute("width").as_float(0), pg.attribute("height").as_float(0), blockidx++));
         resetConfigNode(doc.child("defs").find_child_by_attribute("script", "type", "text/writeconfig"));
+        // save header block so saveBgz() can determine if partial save is possible
+        std::stringstream headerstrm;
+        if(bgz_read_block(zinstrm, &blockInfo[0], headerstrm))
+          bgzHeader = headerstrm.str();
         return LOAD_OK;
       }
     }
