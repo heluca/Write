@@ -1,6 +1,9 @@
-syncscribble/Release/
-syncscribble/Debug/
-syncscribble/LinuxRel/
+# build output (see syncscribble/Makefile: ./Release, or ./Debug with DEBUG=1)
+Release/
+Debug/
+LinuxRel/
+MacRelease/
+SimDebug/
 
 # Android build scratch / machine-specific / gradle-wrapper bootstrap (gww fetches these)
 syncscribble/android/.curlbuild/
