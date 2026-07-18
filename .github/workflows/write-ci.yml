@@ -55,7 +55,7 @@ jobs:
         curl -L -o curl-src.zip https://curl.se/download/curl-8.11.1.zip
         tar -xf curl-src.zip
         cd curl-8.11.1\winbuild
-        nmake /f Makefile.vc mode=static ENABLE_SCHANNEL=yes MACHINE=x64 DEBUG=no
+        nmake /f Makefile.vc mode=static RTLIBCFG=static ENABLE_SCHANNEL=yes MACHINE=x64 DEBUG=no
     - name: Stage libcurl at the path the Makefile expects
       shell: bash
       run: |
