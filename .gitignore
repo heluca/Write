@@ -1,0 +1,6 @@
+# build output (see syncscribble/Makefile: ./Release, or ./Debug with DEBUG=1)
+Release/
+Debug/
+LinuxRel/
+MacRelease/
+SimDebug/
