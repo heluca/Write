@@ -59,7 +59,9 @@ jobs:
     - name: Stage libcurl at the path the Makefile expects
       shell: bash
       run: |
-        src=$(echo curl-8.11.1/builds/libcurl-vc-x64-release-static-*)
+        ls curl-8.11.1/builds/
+        # winbuild also leaves -obj-curl/-obj-lib intermediates; take only the package dir
+        src=$(ls -d curl-8.11.1/builds/libcurl-vc-x64-release-static-* | grep -v -- -obj- | head -1)
         mkdir -p Write/curl/builds
         cp -r "$src" Write/curl/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel
         ls Write/curl/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel/lib
@@ -73,10 +75,11 @@ jobs:
       shell: cmd
       working-directory: Write/syncscribble
       run: ..\..\make.exe SHELL=cmd.exe DEBUG=0 zip
-    # SSH session to debug workflow
+    # SSH session to debug workflow; time-limited so a failure can't hang the job for hours
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
       if: ${{ failure() }}
+      timeout-minutes: 15
     - name: Upload release ZIP
       uses: actions/upload-artifact@v6
       with:
