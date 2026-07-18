@@ -40,15 +40,29 @@ jobs:
 
   windows-build:
     runs-on: windows-latest
-    # Windows WebDAV build not wired yet (no libcurl); keep this job on upstream master only
-    if: github.ref_name == 'master'
     steps:
     - name: Checkout
-      run: git clone --recurse-submodules https://github.com/styluslabs/Write
+      shell: bash
+      run: git clone --recurse-submodules --branch "${GITHUB_REF_NAME}" "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" Write
     - name: Download make.exe
       run: curl -L -o make.exe https://github.com/styluslabs/maps/releases/download/alpha-1/make.exe
     - name: MSVC command prompt
       uses: ilammy/msvc-dev-cmd@v1
+    # static libcurl with Schannel (native Windows TLS) for WebDAV
+    - name: Build libcurl
+      shell: cmd
+      run: |
+        curl -L -o curl-src.zip https://curl.se/download/curl-8.11.1.zip
+        tar -xf curl-src.zip
+        cd curl-8.11.1\winbuild
+        nmake /f Makefile.vc mode=static ENABLE_SCHANNEL=yes MACHINE=x64 DEBUG=no
+    - name: Stage libcurl at the path the Makefile expects
+      shell: bash
+      run: |
+        src=$(echo curl-8.11.1/builds/libcurl-vc-x64-release-static-*)
+        mkdir -p Write/curl/builds
+        cp -r "$src" Write/curl/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel
+        ls Write/curl/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel/lib
     - name: Build SDL
       shell: cmd
       working-directory: Write/SDL

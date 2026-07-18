@@ -1,6 +1,10 @@
 #include "httpclient.h"
 #include <curl/curl.h>
+#ifdef _WIN32
+#define strncasecmp _strnicmp
+#else
 #include <strings.h>
+#endif
 
 // One-time global init; curl_global_init is not thread-safe so do it before any threads start.
 static void ensureCurlInit()

@@ -165,6 +165,29 @@ static std::string toHttpUrl(const std::string& url)
   return url;
 }
 
+// parse an RFC 1123 date ("Sat, 18 Jul 2026 16:54:22 GMT") to a UTC timestamp; 0 on failure
+// (strptime/timegm are POSIX-only, so hand-roll for MSVC)
+static Timestamp parseHttpDate(const char* s)
+{
+  static const char* months = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  const char* comma = strchr(s, ',');
+  if(comma) s = comma + 1;
+  char mon[4] = "";
+  int day = 0, year = 0, hour = 0, min = 0, sec = 0;
+  if(sscanf(s, " %d %3s %d %d:%d:%d", &day, mon, &year, &hour, &min, &sec) != 6)
+    return 0;
+  const char* m = strstr(months, mon);
+  if(!m) return 0;
+  struct tm tm = {};
+  tm.tm_mday = day;  tm.tm_mon = int(m - months)/3;  tm.tm_year = year - 1900;
+  tm.tm_hour = hour;  tm.tm_min = min;  tm.tm_sec = sec;
+#ifdef _WIN32
+  return _mkgmtime(&tm);
+#else
+  return timegm(&tm);
+#endif
+}
+
 // percent-decode a WebDAV href (server returns encoded paths)
 static std::string urlDecode(const std::string& s)
 {
@@ -224,11 +247,8 @@ bool webdavListDir(const char* url, std::vector<WebDavEntry>& entries, WebDavErr
           }
           else if(pn.endsWith("getcontentlength"))
             e.size = atol(p.text().as_string());
-          else if(pn.endsWith("getlastmodified")) {
-            struct tm tm = {};
-            if(strptime(p.text().as_string(), "%a, %d %b %Y %H:%M:%S", &tm))
-              e.mtime = timegm(&tm);
-          }
+          else if(pn.endsWith("getlastmodified"))
+            e.mtime = parseHttpDate(p.text().as_string());
         }
       }
     }

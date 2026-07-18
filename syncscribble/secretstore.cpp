@@ -68,8 +68,52 @@ bool SecretStore::clear(const std::string& account)
   return ok;
 }
 
+#elif defined(_WIN32)
+// --- Windows: Credential Manager (per-user store, encrypted by the OS with DPAPI) ---
+#include <windows.h>
+#include <wincred.h>
+
+static std::wstring credTarget(const std::string& account)
+{
+  std::string name = "Write WebDAV/" + account;
+  int n = MultiByteToWideChar(CP_UTF8, 0, name.c_str(), -1, NULL, 0);
+  std::wstring w(n > 0 ? n - 1 : 0, L'\0');
+  if(n > 0)
+    MultiByteToWideChar(CP_UTF8, 0, name.c_str(), -1, &w[0], n);
+  return w;
+}
+
+bool SecretStore::available() { return true; }
+
+bool SecretStore::store(const std::string& account, const std::string& secret)
+{
+  std::wstring target = credTarget(account);
+  CREDENTIALW cred = {};
+  cred.Type = CRED_TYPE_GENERIC;
+  cred.TargetName = const_cast<LPWSTR>(target.c_str());
+  cred.CredentialBlobSize = (DWORD)secret.size();
+  cred.CredentialBlob = (LPBYTE)const_cast<char*>(secret.data());
+  cred.Persist = CRED_PERSIST_LOCAL_MACHINE;
+  return CredWriteW(&cred, 0) != 0;
+}
+
+std::string SecretStore::lookup(const std::string& account)
+{
+  PCREDENTIALW pcred = NULL;
+  if(!CredReadW(credTarget(account).c_str(), CRED_TYPE_GENERIC, 0, &pcred))
+    return std::string();
+  std::string result((const char*)pcred->CredentialBlob, pcred->CredentialBlobSize);
+  CredFree(pcred);
+  return result;
+}
+
+bool SecretStore::clear(const std::string& account)
+{
+  return CredDeleteW(credTarget(account).c_str(), CRED_TYPE_GENERIC, 0) != 0;
+}
+
 #elif !defined(WEBDAV_USE_LIBSECRET)
-// Other platforms with no keychain backend wired yet: no-op stubs (iOS/Win/Mac keychains TBD)
+// Other platforms with no keychain backend wired yet: no-op stubs (iOS/Mac keychains TBD)
 bool SecretStore::available() { return false; }
 bool SecretStore::store(const std::string&, const std::string&) { return false; }
 std::string SecretStore::lookup(const std::string&) { return std::string(); }

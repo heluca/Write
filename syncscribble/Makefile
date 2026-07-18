@@ -125,6 +125,19 @@ LIBS = \
 SDL_LIB ?= ../SDL/Release/SDL2.lib
 LIBS += $(SDL_LIB)
 
+# WebDAV: static libcurl using Schannel (native Windows TLS, no cert bundle needed);
+# built by CI or manually: nmake /f Makefile.vc mode=static ENABLE_SCHANNEL=yes (in curl/winbuild)
+CURL_DIR ?= ../curl/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel
+DEFS += CURL_STATICLIB
+INCSYS += $(CURL_DIR)/include
+LIBS += \
+  $(CURL_DIR)/lib/libcurl_a.lib \
+  crypt32.lib \
+  normaliz.lib \
+  wldap32.lib \
+  secur32.lib \
+  bcrypt.lib
+
 FORCECPP = ../layout/layout.obj
 
 # distribution package
