@@ -12,7 +12,8 @@
 	ignore = untracked
 [submodule "SDL"]
 	path = SDL
-	url = https://github.com/pbsurf/SDL.git
+	url = https://github.com/heluca/SDL.git
+	branch = write-android
 	ignore = untracked
 [submodule "nanovgXC"]
 	path = nanovgXC

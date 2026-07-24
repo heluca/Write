@@ -55,7 +55,9 @@ android {
             path 'src/main/jni/Android.mk'
         }
     }
-    ndkVersion '26.3.11579264'
+    // pinned to match the r/android toolchain image (AGP 8.4's own default is r26,
+    // so an explicit pin is required to build against the baked-in NDK)
+    ndkVersion '27.0.12077973'
 
 
     lintOptions {
