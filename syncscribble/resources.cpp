@@ -76,7 +76,7 @@ void setupResources()
 #elif PLATFORM_ANDROID
   const char* extStorage = SDL_AndroidGetExternalStoragePath();
   if(!extStorage)
-    extStorage = "/sdcard/Android/data/com.styluslabs.writeqt/files";  // prevent crash
+    extStorage = "/sdcard/Android/data/ca.helu.eidolon/files";  // prevent crash
   const char* sans = "/system/fonts/Roboto-Regular.ttf";
   sansBackupPath = FSPath(extStorage, ".saved/Roboto-Regular.ttf");
   //const char* sansbold = "/system/fonts/Roboto-Bold.ttf";

@@ -1,4 +1,4 @@
-package com.styluslabs.writeqt;
+package ca.helu.eidolon;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;

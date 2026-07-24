@@ -8,7 +8,7 @@
 
 ScribbleApp* AndroidHelper::mainWindowInst = NULL;
 bool AndroidHelper::acceptVolKeys = false;
-static const char className[] = "com/styluslabs/writeqt/MainActivity";
+static const char className[] = "ca/helu/eidolon/MainActivity";
 
 // Note: see https://stackoverflow.com/questions/27424633/java-callback-from-c-with-android-and-sdl
 //  if you run into any problems

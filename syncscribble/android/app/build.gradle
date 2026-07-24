@@ -3,11 +3,13 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 30
-    namespace 'com.styluslabs.writeqt'
+    namespace 'ca.helu.eidolon'
     defaultConfig {
-        applicationId "com.styluslabs.writeqt"
-        versionCode 24
-        versionName "3.0.24"
+        applicationId "ca.helu.eidolon"
+        // Heluca convention: versionCode = MAJOR*10000 + MINOR*100 + PATCH
+        // (fresh applicationId — versioning independent of upstream Write's)
+        versionCode 1
+        versionName "0.0.1"
         // SDK 18 for GLES 3.0 (linking fails for ES3.1 fns for armv7), SDK 21 for GLES 3.1
         minSdkVersion 21
         targetSdkVersion 29
@@ -20,14 +22,15 @@ android {
     }
     buildTypes {
         release {
-            // remove this to produced unsigned APK for upload to Google Play (after manually signing)
-            signingConfig signingConfigs.debug
-            // enable this for Google Play APK
+            // no signingConfig: signing is injected at build time via
+            // -Pandroid.injected.signing.* (Heluca r/android convention)
             minifyEnabled false
             // to add release specific compiler flags, add cFlags or cppFlags here
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             ndk {
                 abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+                // embed native symbol tables in the .aab so Play can symbolize crashes
+                debugSymbolLevel 'SYMBOL_TABLE'
             }
         }
         arm64rel {

@@ -48,10 +48,10 @@ ScribbleApp::ScribbleApp(int argc, char* argv[])
 #if PLATFORM_ANDROID
   const char* appstorage = SDL_AndroidGetExternalStoragePath();
   if(!appstorage)
-    appstorage = "/sdcard/Android/data/com.styluslabs.writeqt/files";  // prevent crash
-  docRoot = "/sdcard/styluslabs/write/";
+    appstorage = "/sdcard/Android/data/ca.helu.eidolon/files";  // prevent crash
+  docRoot = "/sdcard/helu/eidolon/";
   // can't seem to move files into app storage on Android 11, so trash folder needs to be outside it
-  tempPath = "/sdcard/styluslabs/.temp/";
+  tempPath = "/sdcard/helu/.temp/";
   // can still access folders w/o permission - alternative would be to check for or create a file (.nomedia?)
   if(!FSPath(docRoot).exists() || !hasAndroidPermission()) {
     docRoot = FSPath(appstorage, "/").c_str();
@@ -59,9 +59,9 @@ ScribbleApp::ScribbleApp(int argc, char* argv[])
   }
   // use old location if existing config file, but otherwise we want to use appstorage local even if we
   //  get sdcard permission
-  cfgFile = "/sdcard/styluslabs/write.xml";  // also accept write.xml to make it easier to copy from desktop
+  cfgFile = "/sdcard/helu/eidolon.xml";  // also accept write.xml to make it easier to copy from desktop
   if(!FSPath(cfgFile).exists())
-    cfgFile = "/sdcard/styluslabs/.write.xml";
+    cfgFile = "/sdcard/helu/.eidolon.xml";
   if(!FSPath(cfgFile).exists())
     cfgFile = FSPath(appstorage, ".write.xml").c_str();
   savedPath = FSPath(appstorage, ".saved/").c_str();
@@ -304,23 +304,23 @@ void ScribbleApp::init()
 #if PLATFORM_ANDROID
   // this will cause permission prompt for fresh install
   if(!FSPath(cfgFile).exists())
-    cfg->set("currFolder", "/sdcard/styluslabs/write/");
+    cfg->set("currFolder", "/sdcard/helu/eidolon/");
   // Android permissions disaster: upgrading from target API 29 w/ write permission to 30 will set permission
   //  to "media only", which allows some files created by us outside Android/data app folder to be writable,
   //  others read-only, others neither; can't create new files - so we need to prompt user to grant manage
   //  files permission or reset to Android/data app folder
   const char* currfolder = cfg->String("currFolder");
   if(!hasAndroidPermission()) {
-    if(!StringRef(currfolder).contains("com.styluslabs.writeqt") && !requestAndroidPermission()) {
+    if(!StringRef(currfolder).contains("ca.helu.eidolon") && !requestAndroidPermission()) {
       cfg->set("currFolder", docRoot.c_str());
       cfg->set("reopenLastDoc", false);  // prevent opening of document from changing currFolder
       openOrCreateDoc();  // showing dialog prevents delayedShowDocList from working
       return;
     }
   }
-  else if(StringRef(currfolder).startsWith("/sdcard/styluslabs/write/")) {
-    //PLATFORM_LOG("Creating /sdcard/styluslabs/write/\n");
-    createPath("/sdcard/styluslabs/write/");
+  else if(StringRef(currfolder).startsWith("/sdcard/helu/eidolon/")) {
+    //PLATFORM_LOG("Creating /sdcard/helu/eidolon/\n");
+    createPath("/sdcard/helu/eidolon/");
   }
   // we are now ready to handle initial intent
   //  if we were sent a document to open, openDocument will close doc list that is shown by newDocument()
@@ -663,9 +663,9 @@ bool ScribbleApp::sdlEventHandler(SDL_Event* event)
       if(cfg->Int("strokeCounter") > 10000 && cfg->Int("lastReviewPrompt") == 0) {
         cfg->set("lastReviewPrompt", int(mSecSinceEpoch()/1000));
         auto choice = messageBox(Question, _("Leave a review?"),
-            _("You can support the development of Write by leaving a review."), {_("OK"), _("Cancel")});
+            _("You can support the development of Eidolon by leaving a review."), {_("OK"), _("Cancel")});
         if(choice == _("OK"))
-          openURL("http://play.google.com/store/apps/details?id=com.styluslabs.writeqt");
+          openURL("http://play.google.com/store/apps/details?id=ca.helu.eidolon");
       }
 #endif
       if((PLATFORM_LINUX && clipboardExternal) || (cfg->Bool("preloadClipboard") && clipboardSerial != systemClipboardSerial()))
@@ -773,12 +773,12 @@ bool ScribbleApp::sdlEventHandler(SDL_Event* event)
       }
       else if(event->user.code == STORAGE_PERMISSION) {
         if(event->user.data1) {
-          const char* p = "/sdcard/styluslabs/write/";
+          const char* p = "/sdcard/helu/eidolon/";
           if(createPath(p)) {
             docRoot = p;
-            if(cfg->loadConfigFile("/sdcard/styluslabs/.write.xml"))
-              cfgFile = "/sdcard/styluslabs/.write.xml";
-            tempPath = "/sdcard/styluslabs/.temp/";
+            if(cfg->loadConfigFile("/sdcard/helu/.eidolon.xml"))
+              cfgFile = "/sdcard/helu/.eidolon.xml";
+            tempPath = "/sdcard/helu/.temp/";
             createPath(tempPath.c_str());
           }
         }
@@ -914,7 +914,7 @@ bool ScribbleApp::hasAndroidPermission()
   // 0x1 - WRITE_EXTERNAL_STORAGE, 0x2 - API level >= 30, 0x4 - MANAGE_EXTERNAL_STORAGE
   int permis = AndroidHelper::doAction(A_CHECK_PERM);
   return permis == 0x1 || (permis & 0x4);
-  //return FSPath("/sdcard/styluslabs/write/.nomedia").exists();
+  //return FSPath("/sdcard/helu/eidolon/.nomedia").exists();
 }
 
 bool ScribbleApp::requestAndroidPermission()
@@ -1906,7 +1906,7 @@ bool ScribbleApp::doSave(ScribbleDoc* doc)
   if(doc->saveDocument())
     return true;
   messageBox(Warning, _("Save error"), _("An error occurred saving the document.  Please try saving"
-      " to a different location.  Contact support@styluslabs.com if this error persists."));
+      " to a different location.  Contact r@helu.ca if this error persists."));
   return false;
 }
 
@@ -2204,16 +2204,15 @@ void ScribbleApp::about()
   static const int maint = ver % 100;
   static const int minor = (ver/100) % 100;
   static const int major = (ver/10000) % 100;
-  messageBox(Info, _("About Write"),
-      //fstring("Write v%d.%d.%d\nBuild ID: ", major, minor, maint) + PPVALUE_TO_STRING(SCRIBBLE_REV_NUMBER)
-      fstring("Write %d\nBuild ID: ", major) + PPVALUE_TO_STRING(SCRIBBLE_REV_NUMBER)
+  messageBox(Info, _("About Eidolon"),
+      //fstring("Eidolon v%d.%d.%d\nBuild ID: ", major, minor, maint) + PPVALUE_TO_STRING(SCRIBBLE_REV_NUMBER)
+      fstring("Eidolon %d\nBuild ID: ", major) + PPVALUE_TO_STRING(SCRIBBLE_REV_NUMBER)
       + "; " + __DATE__ + (IS_DEBUG ? " DEBUG" : "") +
-      "\nCreated by: Stylus Labs\nhttp://www.styluslabs.com"
-      "\nsupport@styluslabs.com\n\nWrite is a word processor for handwriting."
+      "\nMaintained by: Heluca (r@helu.ca)\nhttps://github.com/heluca/Write"
+      "\nA fork of Write by Stylus Labs (www.styluslabs.com)"
+      "\n\nEidolon is a word processor for handwriting."
 #if PLATFORM_IOS
-      "\nPrivacy: Write does not collect any personal data."
-#else
-      "\nAvailable for iOS, Android, Windows, Mac, and Linux."
+      "\nPrivacy: Eidolon does not collect any personal data."
 #endif
   );
 }
