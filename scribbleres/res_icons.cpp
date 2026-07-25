@@ -1010,7 +1010,31 @@ static const char* icons__write_icon_flat_svg = R"~~~~(<?xml version="1.0" encod
 </svg>
 )~~~~";
 
+static const char* icons__heart_svg = R"~~~~(<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.2" baseProfile="tiny" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+  x="0px" y="0px" width="96px" height="96px" viewBox="-4 -4 32 32" xml:space="preserve">
+<g class="icon">
+  <path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5 2,5.41 4.42,3 7.5,3 9.24,3 10.91,3.81 12,5.08 13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.41 22,8.5 22,12.27 18.6,15.36 13.45,20.03L12,21.35Z" />
+</g>
+</svg>
+)~~~~";
+
+static const char* icons__cloud_svg = R"~~~~(<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.2" baseProfile="tiny" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+	 x="0px" y="0px" width="96px" height="96px" viewBox="0 0 96 96" xml:space="preserve">
+<g class="icon">
+<path fill-rule="evenodd" d="M77.921,50.825C77.319,42.66,70.518,36.22,62.198,36.22
+	c-3.216,0-6.204,0.965-8.706,2.622c-1.794-7.016-8.14-12.209-15.714-12.209c-8.967,0-16.238,7.277-16.238,16.244
+	c0,0.661,0.051,1.309,0.125,1.953c-0.09-0.003-0.181-0.019-0.275-0.019c-6.78,0-12.279,5.501-12.279,12.282
+	c0,6.569,5.173,11.926,11.666,12.243v0.03H77.23V69.33c0.123,0.004,0.242,0.037,0.369,0.037c5.134,0,9.29-4.159,9.29-9.289
+	C86.89,55.057,82.904,50.996,77.921,50.825"/>
+</g>
+</svg>
+)~~~~";
+
 static void LOAD_RES_FN() { addStringResources({
+  {"icons/cloud.svg", icons__cloud_svg},
+  {"icons/heart.svg", icons__heart_svg},
   {"icons/arrow_down.svg", icons__arrow_down_svg},
   {"icons/arrow_up.svg", icons__arrow_up_svg},
   {"icons/checkbox_check.svg", icons__checkbox_check_svg},

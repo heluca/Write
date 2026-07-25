@@ -4,3 +4,12 @@ Debug/
 LinuxRel/
 MacRelease/
 SimDebug/
+
+# Android build scratch / machine-specific / gradle-wrapper bootstrap (gww fetches these)
+syncscribble/android/.curlbuild/
+syncscribble/android/.gradle/
+syncscribble/android/build/
+syncscribble/android/app/build/
+syncscribble/android/local.properties
+syncscribble/android/gradlew
+syncscribble/android/gradle/wrapper/gradle-wrapper.jar

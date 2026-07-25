@@ -198,6 +198,15 @@ const char* prefInfoXML = R"#(
       title="Force screen DPI (reopen)" description="Set to 0 to use detected value" />
   <pref name="syncServer" type="string" group="Advanced"
       title="Whiteboard server" description="For real-time collaboration" />
+  <pref name="webdavUrl" type="string" level="1" group="WebDAV"
+      title="Server URL" description="e.g. https://example.com/dav/notes/" />
+  <pref name="webdavUser" type="string" level="1" group="WebDAV"
+      title="Username" description="" />
+  <pref name="webdavPassword" type="string" level="1" group="WebDAV"
+      title="Password" description="Saved in the OS keychain when available" />
+  <pref name="webdavSavePlaintext" type="bool" level="1" group="WebDAV"
+      title="Save password in config (plaintext)"
+      description="Only if no keychain is available; otherwise the password is asked each session" />
   <pref name="updateCheck" type="bool" level="1" group="Advanced" exclude="mobile"
       title="Check for updates (weekly)" description="Check online for updates once a week" />
   <pref name="showAdvPrefs" type="bool" level="1" group="Advanced" title="Show advanced preferences" description="" />

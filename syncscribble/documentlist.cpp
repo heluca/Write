@@ -2,6 +2,8 @@
 #include "documentlist.h"
 
 #include "scribbleapp.h"
+#include "webdavstream.h"
+#include "secretstore.h"
 #include "scribbledoc.h"
 #include "touchwidgets.h"
 
@@ -29,10 +31,15 @@ DocumentList::DocumentList(const char* root, const char* temp) : Window(createWi
 #endif
   // set initial dir - maybe we should do this in MainWindow?
   currDir = ScribbleApp::cfg->String("currFolder");
-  if(!currDir.isAbsolute())
-    currDir = canonicalPath(currDir);
-  if(!currDir.isDir() || !currDir.exists())
-    currDir = docRoot;
+  if(WebDavStream::isWebDavUrl(currDir.c_str())) {
+    // remote folder: existence is verified lazily by setCurrDir's PROPFIND, not stat()
+  }
+  else {
+    if(!currDir.isAbsolute())
+      currDir = canonicalPath(currDir);
+    if(!currDir.isDir() || !currDir.exists())
+      currDir = docRoot;
+  }
 }
 
 void DocumentList::createUI()
@@ -71,46 +78,29 @@ void DocumentList::createUI()
   whiteboardBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_people.svg"), _("Open Whiteboard"));
   whiteboardBtn->onClicked = [this](){ selectedFile = currDir.c_str(); finish(OPEN_WHITEBOARD); };
 
+  // WebDAV servers: list configured servers + "Add server..."; available on all platforms
+  webdavMenu = createMenu(Menu::VERT_LEFT, false);
+  webdavBtn = createToolbutton(SvgGui::useFile("icons/cloud.svg"), _("WebDAV"), true);
+  webdavBtn->setMenu(webdavMenu);
+  rebuildWebdavMenu();
+
+  // Favorites: quick-jump to saved folders (local or WebDAV), available on all platforms
+  favoritesMenu = createMenu(Menu::VERT_LEFT, false);
+  favoritesBtn = createToolbutton(SvgGui::useFile("icons/heart.svg"), _("Favorites"), true);
+  favoritesBtn->setMenu(favoritesMenu);
+  rebuildFavoritesMenu();
+
   Widget* stretch = createStretch();
 
   Toolbar* mainToolbar = createToolbar();
-#if PLATFORM_WIN || PLATFORM_ANDROID
-  Menu* driveMenu = createMenu(Menu::VERT_RIGHT, false);  // no icons
-  drivesBtn = createToolbutton(SvgGui::useFile("icons/ic_drive.svg"), _("Drives"));
-#if PLATFORM_WIN
-  drivesBtn->setShowTitle(true);
-  auto driveNames = lsDrives();
-  for(std::string& drive : driveNames) {
-    std::string letter = drive.substr(0, 2);
-    std::string title = drive.size() > 2 ? drive.substr(3) + " (" + letter + ")" : letter;
-    Button* item = createMenuItem(title.c_str());
-    item->onClicked = [this, letter]() { setCurrDir((letter + "/").c_str()); };
-    driveMenu->addItem(item);
-  }
-#elif PLATFORM_ANDROID
-  drivesBtn->setShowTitle(false);
-  sharedDirBtn = createMenuItem("styluslabs/write");
-  sharedDirBtn->onClicked = [this]() {
-    if(!ScribbleApp::hasAndroidPermission()) {
-      ScribbleApp::cfg->set("currFolder", "/sdcard/styluslabs/write/");  // so we open after restarting
-      if(!ScribbleApp::requestAndroidPermission())
-        ScribbleApp::cfg->set("currFolder", currDir.c_str());  // user canceled!
-    }
-    else if(createPath("/sdcard/styluslabs/write/"))
-      setCurrDir("/sdcard/styluslabs/write/");
-  };
-  driveMenu->addItem(sharedDirBtn);
-  privateDirBtn = createMenuItem("Android/data");
-  privateDirBtn->onClicked = [this]() {
-    const char* appstorage = SDL_AndroidGetExternalStoragePath();
-    setCurrDir(appstorage ? appstorage : "/sdcard/Android/data/com.styluslabs.writeqt/files");
-  };
-  driveMenu->addItem(privateDirBtn);
-#endif
-  drivesBtn->setMenu(driveMenu);
-  drivesBtn->setVisible(false);
+  // Drives/roots button - quick switch between drives/mount points, always visible on all platforms
+  drivesMenu = createMenu(Menu::VERT_LEFT, false);
+  drivesBtn = createToolbutton(SvgGui::useFile("icons/ic_drive.svg"), _("Drives"), true);
+  drivesBtn->setMenu(drivesMenu);
+  rebuildDrivesMenu();
   mainToolbar->addWidget(drivesBtn);
-#endif
+  mainToolbar->addWidget(webdavBtn);
+  mainToolbar->addWidget(favoritesBtn);
   mainToolbar->addWidget(breadCrumbs[1]);
   mainToolbar->addWidget(breadCrumbs[0]);
   mainToolbar->addWidget(stretch);
@@ -352,6 +342,203 @@ void DocumentList::refresh()
   setCurrDir(currDir.c_str());
 }
 
+std::vector<std::string> DocumentList::getFavorites() const
+{
+  std::vector<std::string> favs;
+  std::string s = ScribbleApp::cfg->String("favoritePaths", "");
+  if(!s.empty()) {
+    for(StringRef part : splitStringRef(s, ":::"))
+      if(!part.isEmpty())
+        favs.push_back(part.toString());
+  }
+  return favs;
+}
+
+void DocumentList::setFavorites(const std::vector<std::string>& favs)
+{
+  ScribbleApp::cfg->set("favoritePaths", joinStr(favs, ":::").c_str());
+  rebuildFavoritesMenu();
+}
+
+void DocumentList::rebuildFavoritesMenu()
+{
+  if(gui())
+    gui()->deleteContents(favoritesMenu->selectFirst(".child-container"));
+
+  std::vector<std::string> favs = getFavorites();
+  // configured WebDAV server appears automatically (not duplicated if already a favorite)
+  std::string davUrl = ScribbleApp::cfg->String("webdavUrl", "");
+  if(!davUrl.empty() && std::find(favs.begin(), favs.end(), davUrl) == favs.end())
+    favs.insert(favs.begin(), davUrl);
+
+  for(const std::string& fav : favs) {
+    bool isCfgDav = (fav == davUrl);
+    // show a friendly label: host for WebDAV, folder name for local paths
+    std::string label = WebDavStream::isWebDavUrl(fav.c_str()) ? fav : FSPath(fav).fileName();
+    if(label.empty()) label = fav;
+    Button* item = createMenuItem(label.c_str(),
+        SvgGui::useFile(WebDavStream::isWebDavUrl(fav.c_str()) ? "icons/ic_drive.svg" : "icons/ic_folder.svg"));
+    setupMenuItem(item);
+    item->node->setAttribute("box-anchor", "hfill");
+    item->onClicked = [this, fav](){ setCurrDir(fav.c_str()); };
+    Widget* row = createRow({item}, "", "", "hfill");
+    // X button to remove (auto WebDAV entry can't be removed here - manage it via the cloud menu)
+    if(!isCfgDav) {
+      Button* removeBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_cancel.svg"), _("Remove favorite"));
+      removeBtn->onClicked = [this, fav](){
+        std::vector<std::string> f = getFavorites();
+        f.erase(std::remove(f.begin(), f.end(), fav), f.end());
+        setFavorites(f);  // rebuilds this menu
+      };
+      row->addWidget(removeBtn);
+    }
+    favoritesMenu->addWidget(row);
+  }
+  favoritesMenu->addSeparator();
+  favoritesMenu->addItem(_("Add current folder"), [this](){
+    std::vector<std::string> f = getFavorites();
+    std::string cur = currDir.c_str();
+    if(std::find(f.begin(), f.end(), cur) == f.end()) {
+      f.push_back(cur);
+      setFavorites(f);
+    }
+  });
+}
+
+void DocumentList::rebuildWebdavMenu()
+{
+  if(gui())
+    gui()->deleteContents(webdavMenu->selectFirst(".child-container"));
+
+  for(const std::string& server : WebDavStream::servers()) {
+    Button* item = createMenuItem(server.c_str(), SvgGui::useFile("icons/cloud.svg"));
+    setupMenuItem(item);
+    item->node->setAttribute("box-anchor", "hfill");
+    item->onClicked = [this, server](){ setCurrDir(server.c_str()); };
+    Button* editBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_draw.svg"), _("Edit server"));
+    editBtn->onClicked = [this, server](){
+      gui()->closeMenus();
+      editWebdavServer(server);
+    };
+    Button* removeBtn = createToolbutton(SvgGui::useFile("icons/ic_menu_discard.svg"), _("Remove server"));
+    removeBtn->onClicked = [this, server](){
+      gui()->closeMenus();
+      if(ScribbleApp::messageBox(ScribbleApp::Question, _("Remove server"),
+          fstring(_("Remove WebDAV server %s?"), server.c_str()), {_("Remove"), _("Cancel")}) == _("Remove")) {
+        WebDavStream::removeServer(server);
+        rebuildWebdavMenu();
+      }
+    };
+    webdavMenu->addWidget(createRow({item, editBtn, removeBtn}, "", "", "hfill"));
+  }
+  webdavMenu->addSeparator();
+  webdavMenu->addItem(_("Add server..."), SvgGui::useFile("icons/ic_menu_add_doc.svg"),
+      [this](){ addWebdavServer(); });
+}
+
+// add a new server (existing empty) or edit one (existing = its base URL)
+void DocumentList::editWebdavServer(const std::string& existing)
+{
+  bool editing = !existing.empty();
+  Dialog dialog(createDialogNode());
+  TextEdit* urlEdit = createTextEdit(280);
+  urlEdit->setText(editing ? existing.c_str() : "https://");
+  TextEdit* userEdit = createTextEdit(280);
+  if(editing) userEdit->setText(WebDavStream::serverUser(existing).c_str());
+  TextEdit* passEdit = createTextEdit(280);
+  passEdit->editMode = TextEdit::PASSWORD_SHOWLAST;
+  bool canSave = SecretStore::available() || ScribbleApp::cfg->Bool("webdavSavePlaintext");
+  CheckBox* savePw = canSave ? createCheckBox() : NULL;
+  if(savePw) savePw->setChecked(true);
+
+  Widget* body = dialog.selectFirst(".body-container");
+  if(editing)
+    body->addWidget(new Widget(createTextNode(_("Leave password blank to keep the current one."))));
+  body->addWidget(createTitledRow(_("Server URL"), 0, urlEdit));
+  body->addWidget(createTitledRow(_("User"), 0, userEdit));
+  body->addWidget(createTitledRow(_("Password"), 0, passEdit));
+  if(savePw)
+    body->addWidget(createTitledRow(_("Save password"), savePw));
+  body->setMargins(8, 8, 0, 8);
+  dialog.setTitle(editing ? _("Edit WebDAV Server") : _("Add WebDAV Server"));
+  dialog.focusedWidget = editing ? passEdit : urlEdit;
+  Button* okBtn = dialog.addButton(_("OK"), [&dialog](){ dialog.finish(Dialog::ACCEPTED); });
+  dialog.addButton(_("Cancel"), [&dialog](){ dialog.finish(Dialog::CANCELLED); });
+  urlEdit->onChanged = [okBtn](const char* s){ okBtn->setEnabled(s && s[0] && strstr(s, "://")); };
+  okBtn->setEnabled(urlEdit->text().find("://") != std::string::npos);
+
+  if(ScribbleApp::execDialog(&dialog) != Dialog::ACCEPTED)
+    return;
+  std::string url = trimStr(urlEdit->text());
+  if(url.empty() || url.find("://") == std::string::npos)
+    return;
+  if(url.back() != '/') url += '/';
+
+  std::string pw = trimStr(passEdit->text());
+  // when editing with a blank password, carry the existing one forward
+  if(editing && pw.empty())
+    pw = WebDavStream::password(existing);
+  // if the URL changed, drop the old entry (and its stored secret) first
+  if(editing && url != existing)
+    WebDavStream::removeServer(existing);
+  WebDavStream::addServer(url, trimStr(userEdit->text()), pw, savePw && savePw->isChecked());
+  rebuildWebdavMenu();
+  setCurrDir(url.c_str());  // jump to the (new/updated) server
+}
+
+void DocumentList::addWebdavServer() { editWebdavServer(""); }
+
+void DocumentList::rebuildDrivesMenu()
+{
+  if(gui())
+    gui()->deleteContents(drivesMenu->selectFirst(".child-container"));
+
+  auto addRoot = [this](const std::string& label, const std::string& path){
+    Button* item = drivesMenu->addItem(label.c_str(), SvgGui::useFile("icons/ic_drive.svg"),
+        [this, path](){ setCurrDir(path.c_str()); });
+    return item;
+  };
+
+#if PLATFORM_WIN
+  for(std::string& drive : lsDrives()) {
+    std::string letter = drive.substr(0, 2);
+    std::string title = drive.size() > 2 ? drive.substr(3) + " (" + letter + ")" : letter;
+    addRoot(title, letter + "/");
+  }
+#elif PLATFORM_ANDROID
+  drivesMenu->addItem("styluslabs/write", SvgGui::useFile("icons/ic_drive.svg"), [this](){
+    if(!ScribbleApp::hasAndroidPermission()) {
+      ScribbleApp::cfg->set("currFolder", "/sdcard/styluslabs/write/");
+      if(!ScribbleApp::requestAndroidPermission())
+        ScribbleApp::cfg->set("currFolder", currDir.c_str());
+    }
+    else if(createPath("/sdcard/styluslabs/write/"))
+      setCurrDir("/sdcard/styluslabs/write/");
+  });
+  drivesMenu->addItem("Android/data", SvgGui::useFile("icons/ic_drive.svg"), [this](){
+    const char* appstorage = SDL_AndroidGetExternalStoragePath();
+    setCurrDir(appstorage ? appstorage : "/sdcard/Android/data/com.styluslabs.writeqt/files");
+  });
+#else
+  // Linux/Mac: filesystem root, home, and any mounted removable media
+  addRoot("/ (root)", "/");
+  const char* home = getenv("HOME");
+  if(home && home[0])
+    addRoot(_("Home"), std::string(home) + "/");
+  const char* user = getenv("USER");
+  for(const char* base : {"/media", "/run/media", "/mnt", "/Volumes"}) {
+    FSPath basedir(std::string(base) + "/");
+    // /media/<user> and /run/media/<user> on Linux, /Volumes on Mac, /mnt directly
+    if((StringRef(base) == "/media" || StringRef(base) == "/run/media") && user && user[0])
+      basedir = FSPath(std::string(base) + "/" + user + "/");
+    if(basedir.exists())
+      for(const std::string& m : lsDirectory(basedir))
+        if(!m.empty() && m.front() != '.')
+          addRoot(m.back() == '/' ? m.substr(0, m.size()-1) : m, basedir.childPath(m));
+  }
+#endif
+}
+
 void DocumentList::finish(Result_t res)
 {
   hideUndo();
@@ -365,12 +552,44 @@ void DocumentList::finish(Result_t res)
 void DocumentList::setCurrDir(const char* path)
 {
   FSPath pathinfo(path);
-  if(!pathinfo.exists())
+  bool remote = WebDavStream::isWebDavUrl(path);
+  // pull the remote listing up front; bail (staying put) if it can't be reached
+  std::vector<WebDavEntry> davEntries;
+  if(remote) {
+    if(!ScribbleApp::app->ensureWebdavPassword())
+      return;  // user cancelled the password prompt
+    WebDavError err;
+    if(!webdavListDir(path, davEntries, &err)) {
+      std::string msg;
+      if(err.status == 401 || err.status == 403)
+        msg = _("Authentication failed. Check the user name and password.");
+      else if(err.status == 404)
+        msg = _("Folder not found on the server. Check the URL path.");
+      else if(err.status == 0)
+        msg = err.message.empty() ? _("Could not connect to the server.")
+            : fstring(_("Could not connect: %s"), err.message.c_str());
+      else if(err.status == 207)
+        msg = _("The server sent an invalid folder listing.");
+      else if(err.status >= 200 && err.status < 300)
+        msg = _("The server reply was not a WebDAV listing. Check that the URL is a WebDAV folder.");
+      else
+        msg = fstring(_("The server returned HTTP error %ld."), err.status);
+      // a wrong password or URL is fixable in place, so offer the edit dialog with the error
+      std::string server = WebDavStream::serverForUrl(path);
+      if(!server.empty() && ScribbleApp::messageBox(ScribbleApp::Warning, _("WebDAV"),
+          msg, {_("Edit Server..."), _("Cancel")}) == _("Edit Server..."))
+        editWebdavServer(server);
+      else if(server.empty())
+        ScribbleApp::app->showNotify(msg, 2);
+      return;
+    }
+  }
+  else if(!pathinfo.exists())
     return;
   //if(docListSiloed && !StringRef(pathinfo.c_str()).startsWith(docRoot.c_str())) { pathinfo = docRoot; }
 
   bool hasLegacyDocs = false;
-  bool writable = true; //pathinfo.isWritable();
+  bool writable = !remote; //pathinfo.isWritable();  -- remote create/paste not supported yet
   newDocBtn->setEnabled(writable);
   newFolderBtn->setEnabled(writable);
   // can't paste into read-only folder, obviously
@@ -409,11 +628,24 @@ void DocumentList::setCurrDir(const char* path)
   // update contents
   enum sortBy_t {SORT_NAME, SORT_MTIME};
   sortBy_t sortBy = ScribbleApp::cfg->Int("docListSort") == 1 ? SORT_MTIME : SORT_NAME;
-  std::vector<std::string> allfiles = lsDirectory(pathinfo);
   // extract folders and files we support
   std::vector<std::string> files;
   std::vector<Timestamp> mtimes;
   std::vector<long> fsizes;
+  if(remote) {
+    // already have name/mtime/size from one PROPFIND; no per-file requests (and no thumbnails)
+    for(const WebDavEntry& e : davEntries) {
+      if(e.name.empty() || e.name.front() == '.')
+        continue;
+      if(!isWriteDoc(pathinfo.child(e.name)))
+        continue;
+      files.push_back(e.name);
+      mtimes.push_back(e.mtime);
+      fsizes.push_back(e.size);  // for dirs this is 0; item count not available without extra requests
+    }
+  }
+  else {
+  std::vector<std::string> allfiles = lsDirectory(pathinfo);
   for(const std::string& file : allfiles) {
     if(file.empty() || file.front() == '.')
       continue;
@@ -433,6 +665,7 @@ void DocumentList::setCurrDir(const char* path)
       else
         fsizes.push_back(getFileSize(fileinfo));
     }
+  }
   }
 
   // sort indices instead of names themselves (i.e., argsort)
@@ -475,8 +708,8 @@ void DocumentList::setCurrDir(const char* path)
       container->addChild(folderUseNode->clone());
     else if(!containsWord("svg svgz html htm", fileinfo.extension().c_str()))  //fileinfo.extension() != docFileExt)
       container->addChild(fileUseNode->clone());
-    else if(!ScribbleApp::cfg->Bool("showThumbnail"))
-      container->addChild(fileUseNode->clone());
+    else if(remote || !ScribbleApp::cfg->Bool("showThumbnail"))
+      container->addChild(fileUseNode->clone());  // no per-file download for remote listings
     else {
       Image thumbnail = ScribbleDoc::extractThumbnail(fileinfo.c_str());
       if(!thumbnail.isNull())
@@ -530,6 +763,8 @@ void DocumentList::setCurrDir(const char* path)
   ScribbleApp::cfg->set("currFolder", currDir.c_str());
 
   // update breadcrumbs
+  // for remote paths, stop at the server root (its base URL) since exists() can't stat a URL
+  std::string davServer = remote ? WebDavStream::serverForUrl(pathinfo.c_str()) : std::string();
   bool ok = true;
   for(Button* breadCrumb : breadCrumbs) {
     breadCrumb->setVisible(ok);
@@ -538,20 +773,19 @@ void DocumentList::setCurrDir(const char* path)
       breadCrumb->setText(title.size() > 20 ? title.substr(0, 17).append("...").c_str() : title.c_str());
       breadCrumb->setShowTitle(true);  // force layout auto adjust
       breadCrumb->onClicked = [this, pathinfo]() { setCurrDir(pathinfo.c_str()); };
-      pathinfo = pathinfo.parent();
-      ok = pathinfo.exists();
-      if(docListSiloed && !StringRef(pathinfo.c_str()).startsWith(docRoot.c_str()))
-        ok = false;
+      if(remote) {
+        // walk up to (but not past) the server root, without local stat()
+        ok = !davServer.empty() && pathinfo.c_str() != davServer && pathinfo.path.size() > davServer.size();
+        pathinfo = pathinfo.parent();
+      }
+      else {
+        pathinfo = pathinfo.parent();
+        ok = pathinfo.exists();
+        if(docListSiloed && !StringRef(pathinfo.c_str()).startsWith(docRoot.c_str()))
+          ok = false;
+      }
     }
   }
-#if PLATFORM_WIN
-  drivesBtn->setVisible(currDir.fileName().back() == ':');
-#elif PLATFORM_ANDROID
-  drivesBtn->setVisible(!breadCrumbs.back()->isVisible());
-  if(drivesBtn->isVisible())
-    privateDirBtn->setChecked(StringRef(currDir.c_str()).contains("Android/data/com.styluslabs.writeqt"));
-    //sharedDirBtn->setChecked(!privateDirBtn->isChecked());
-#endif
 
   if(hasLegacyDocs && ScribbleApp::cfg->Bool("askConvertDocs")) {
     auto promptres = ScribbleApp::messageBox(ScribbleApp::Question, _("Convert Documents"),

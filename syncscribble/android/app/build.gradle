@@ -58,9 +58,9 @@ android {
             path 'src/main/jni/Android.mk'
         }
     }
-    // pinned to match the r/android toolchain image (AGP 8.4's own default is r26,
-    // so an explicit pin is required to build against the baked-in NDK)
-    ndkVersion '27.0.12077973'
+    // NDK r26.3: the committed static curl+mbedTLS prebuilts (android/prebuilt/) are built
+    // against this; SDL on write-android compiles cleanly here (r27 needs the ALooper fix)
+    ndkVersion '26.3.11579264'
 
 
     lintOptions {

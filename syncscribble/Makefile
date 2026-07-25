@@ -27,6 +27,9 @@ SOURCES = \
   scribblewidget.cpp \
   scribbleconfig.cpp \
   scribblesync.cpp \
+  httpclient.cpp \
+  webdavstream.cpp \
+  secretstore.cpp \
   documentlist.cpp \
   rulingdialog.cpp \
   configdialog.cpp \
@@ -121,6 +124,19 @@ LIBS = \
 
 SDL_LIB ?= ../SDL/Release/SDL2.lib
 LIBS += $(SDL_LIB)
+
+# WebDAV: static libcurl using Schannel (native Windows TLS, no cert bundle needed);
+# built by CI or manually: nmake /f Makefile.vc mode=static ENABLE_SCHANNEL=yes (in curl/winbuild)
+CURL_DIR ?= ../curl/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel
+DEFS += CURL_STATICLIB
+INCSYS += $(CURL_DIR)/include
+LIBS += \
+  $(CURL_DIR)/lib/libcurl_a.lib \
+  crypt32.lib \
+  normaliz.lib \
+  wldap32.lib \
+  secur32.lib \
+  bcrypt.lib
 
 FORCECPP = ../layout/layout.obj
 
@@ -226,12 +242,34 @@ else ifneq ($(BUILD_SHARED_LIBRARY),)
 # Uses SDL 2.0.9 (branch write-android)
 # ./start_gradle assembleRelease && cp app/build/outputs/apk/release/app-release.apk . && ./resignapk.sh app-release.apk ~/styluslabs.keystore && mv signed_app-release.apk write300.apk
 
-# working dir is android/app apparently
-ifneq ($(shell git -C ../../../SDL rev-parse --abbrev-ref HEAD),write-android)
+# locate SDL relative to this makefile (syncscribble dir) rather than a fixed CWD
+ifneq ($(shell git -C $(dir $(lastword $(MAKEFILE_LIST)))../SDL rev-parse --abbrev-ref HEAD),write-android)
   $(error Not on write-android branch!)
 endif
 
 LOCAL_PATH := $(call my-dir)
+
+# Prebuilt static libcurl + mbedTLS for WebDAV (built by android/build-curl.sh, committed
+# under android/prebuilt/<abi>/). $(TARGET_ARCH_ABI) selects the right per-ABI archive.
+PREBUILT := $(LOCAL_PATH)/android/prebuilt
+include $(CLEAR_VARS)
+LOCAL_MODULE := curl_prebuilt
+LOCAL_SRC_FILES := android/prebuilt/$(TARGET_ARCH_ABI)/lib/libcurl.a
+LOCAL_EXPORT_C_INCLUDES := $(PREBUILT)/include
+include $(PREBUILT_STATIC_LIBRARY)
+include $(CLEAR_VARS)
+LOCAL_MODULE := mbedtls_prebuilt
+LOCAL_SRC_FILES := android/prebuilt/$(TARGET_ARCH_ABI)/lib/libmbedtls.a
+include $(PREBUILT_STATIC_LIBRARY)
+include $(CLEAR_VARS)
+LOCAL_MODULE := mbedx509_prebuilt
+LOCAL_SRC_FILES := android/prebuilt/$(TARGET_ARCH_ABI)/lib/libmbedx509.a
+include $(PREBUILT_STATIC_LIBRARY)
+include $(CLEAR_VARS)
+LOCAL_MODULE := mbedcrypto_prebuilt
+LOCAL_SRC_FILES := android/prebuilt/$(TARGET_ARCH_ABI)/lib/libmbedcrypto.a
+include $(PREBUILT_STATIC_LIBRARY)
+
 include $(CLEAR_VARS)
 
 SOURCES += android/androidhelper.cpp
@@ -240,13 +278,15 @@ SOURCES += android/androidhelper.cpp
 LOCAL_MODULE := main
 
 ALL_INC := $(INC) $(INCSYS) ../SDL/include
-LOCAL_C_INCLUDES := $(addprefix $(LOCAL_PATH)/, $(ALL_INC))
+LOCAL_C_INCLUDES := $(addprefix $(LOCAL_PATH)/, $(ALL_INC)) $(PREBUILT)/include
 
 LOCAL_CFLAGS := $(addprefix -D, $(DEFS))
 LOCAL_CPPFLAGS := -std=c++14 -Wno-unused -Wno-error=format-security
 
 LOCAL_SRC_FILES := $(addprefix $(LOCAL_PATH)/, $(SOURCES))
 LOCAL_SHARED_LIBRARIES := SDL2
+# curl depends on mbedtls; list in dependency order
+LOCAL_STATIC_LIBRARIES := curl_prebuilt mbedtls_prebuilt mbedx509_prebuilt mbedcrypto_prebuilt
 # libandroid needed for ANativeWindow_* fns
 LOCAL_LDLIBS := -lGLESv3 -llog -ljnigraphics -landroid
 
@@ -289,6 +329,13 @@ endif
 CFLAGS = -pthread
 # X11 and Xi needed for linuxtablet.c
 LIBS += -pthread -ldl -lX11 -lXi
+
+# WebDAV remote storage: HTTP(S) via libcurl (dev: system lib via pkg-config; release builds
+# should link static libcurl+mbedtls like SDL to keep the .tgz self-contained)
+PKGS += libcurl
+# OS keychain via the freedesktop Secret Service (gnome-keyring on MATE, KWallet on KDE)
+PKGS += libsecret-1
+DEFS += WEBDAV_USE_LIBSECRET
 
 # distribution package
 TGZ = write$(GITCOUNT).tar.gz

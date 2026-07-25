@@ -2,25 +2,19 @@ name: Write CI
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "webdav" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "webdav" ]
+  workflow_dispatch:
 
 jobs:
   linux-build:
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout
-      run: git clone --recurse-submodules https://github.com/styluslabs/Write
-    #- run: git clone --recurse-submodules https://github.com/styluslabs/Write
-    # can't switch branch of submodule from actions/checkout: https://github.com/actions/checkout/issues/1815
-    #- run: git switch write-linux
-    #  working-directory: Write/SDL
-    #- uses: actions/checkout@v4
-    #  with:
-    #    submodules: recursive
+      run: git clone --recurse-submodules --branch "${GITHUB_REF_NAME}" "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" Write
     - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libcurl4-openssl-dev libsecret-1-dev
     - name: Build SDL
       working-directory: Write/SDL
       run: |
@@ -39,7 +33,7 @@ jobs:
     #   uses: mxschmitt/action-tmate@v3
     #   if: ${{ failure() }}
     - name: Upload release tgz
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: release-22_04-tgz
         path: Write/syncscribble/Release/*.tar.gz
@@ -48,11 +42,29 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout
-      run: git clone --recurse-submodules https://github.com/styluslabs/Write
+      shell: bash
+      run: git clone --recurse-submodules --branch "${GITHUB_REF_NAME}" "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" Write
     - name: Download make.exe
       run: curl -L -o make.exe https://github.com/styluslabs/maps/releases/download/alpha-1/make.exe
     - name: MSVC command prompt
       uses: ilammy/msvc-dev-cmd@v1
+    # static libcurl with Schannel (native Windows TLS) for WebDAV
+    - name: Build libcurl
+      shell: cmd
+      run: |
+        curl -L -o curl-src.zip https://curl.se/download/curl-8.11.1.zip
+        tar -xf curl-src.zip
+        cd curl-8.11.1\winbuild
+        nmake /f Makefile.vc mode=static RTLIBCFG=static ENABLE_SCHANNEL=yes MACHINE=x64 DEBUG=no
+    - name: Stage libcurl at the path the Makefile expects
+      shell: bash
+      run: |
+        ls curl-8.11.1/builds/
+        # winbuild also leaves -obj-curl/-obj-lib intermediates; take only the package dir
+        src=$(ls -d curl-8.11.1/builds/libcurl-vc-x64-release-static-* | grep -v -- -obj- | head -1)
+        mkdir -p Write/curl/builds
+        cp -r "$src" Write/curl/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel
+        ls Write/curl/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel/lib
     - name: Build SDL
       shell: cmd
       working-directory: Write/SDL
@@ -62,13 +74,19 @@ jobs:
     - name: Build Write
       shell: cmd
       working-directory: Write/syncscribble
-      run: ..\..\make.exe SHELL=cmd.exe DEBUG=0 zip
-    # SSH session to debug workflow
+      run: ..\..\make.exe SHELL=cmd.exe DEBUG=0 zip > build.log 2>&1 || (type build.log & exit /b 1)
+    # failures become annotations, which are visible via the API without repo auth
+    - name: Surface build errors as annotations
+      if: ${{ failure() }}
+      shell: bash
+      run: grep -E "error [A-Z]*[0-9]+|fatal error|Error [0-9]+" Write/syncscribble/build.log | head -10 | sed 's/^/::error::/' || echo "::error::no error lines matched in build.log"
+    # SSH session to debug workflow; time-limited so a failure can't hang the job for hours
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
       if: ${{ failure() }}
+      timeout-minutes: 15
     - name: Upload release ZIP
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: release-win64-zip
         path: Write/syncscribble/Release/*.zip
@@ -76,21 +94,33 @@ jobs:
   android-build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      run: git clone --recurse-submodules https://github.com/styluslabs/Write
+    - name: Checkout (this fork + submodules)
+      run: git clone --recurse-submodules --branch "${GITHUB_REF_NAME}" "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" Write
+    - name: SDL to write-android branch
+      working-directory: Write/SDL
+      run: git switch write-android
     - name: Setup JDK
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'zulu'
         java-version: '17'
+    # GitHub ubuntu runners ship an Android SDK (ANDROID_HOME set); add the NDK + cmake Write pins
+    - name: Install NDK + cmake
+      run: |
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+          "ndk;26.3.11579264" "cmake;3.22.1" "platforms;android-30" "platform-tools" >/dev/null
+        echo "sdk.dir=$ANDROID_HOME" > Write/syncscribble/android/local.properties
     - name: Gradle Assemble
-      run: ./gww assembleRelease
       working-directory: Write/syncscribble/android
+      env:
+        ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/26.3.11579264
+      run: ./gww assembleRelease
     # - name: Setup tmate session
     #   uses: mxschmitt/action-tmate@v3
     #   if: ${{ failure() }}
     - name: Upload release APK
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: app-release-apk
         path: Write/syncscribble/android/app/build/outputs/apk/release/app-release.apk
