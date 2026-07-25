@@ -58,9 +58,10 @@ android {
             path 'src/main/jni/Android.mk'
         }
     }
-    // NDK r26.3: the committed static curl+mbedTLS prebuilts (android/prebuilt/) are built
-    // against this; SDL on write-android compiles cleanly here (r27 needs the ALooper fix)
-    ndkVersion '26.3.11579264'
+    // matches the r/android toolchain image's baked NDK. The committed curl+mbedTLS
+    // prebuilts (android/prebuilt/, regenerate via build-curl.sh) and the SDL ALooper
+    // fix on heluca/SDL write-android are both built for r27.
+    ndkVersion '27.0.12077973'
 
 
     lintOptions {

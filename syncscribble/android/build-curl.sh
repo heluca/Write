@@ -4,7 +4,7 @@
 # Android.mk (see jni/curl). Run once when bumping versions; the .a/.h outputs are committed
 # so normal app builds (local and CI) just link them.
 #
-# Usage:  ANDROID_NDK=~/Android/Sdk/ndk/26.3.11579264 ./build-curl.sh
+# Usage:  ANDROID_NDK=~/Android/Sdk/ndk/27.0.12077973 ./build-curl.sh
 set -euo pipefail
 
 MBEDTLS_VER=v3.6.6
