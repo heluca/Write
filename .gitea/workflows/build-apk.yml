@@ -84,7 +84,9 @@ jobs:
       # CI and out of the mirrored upstream Write source.
       - name: Collect artifacts
         run: |
-          set -euo pipefail
+          # POSIX sh only: `run:` steps execute under dash in this runner image,
+          # which has no `pipefail` and no arrays. Keep this script portable.
+          set -eu
           GRADLE_APP=Write/syncscribble/android/app
           VERSION=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' "$GRADLE_APP/build.gradle" | head -1)
           [ -n "$VERSION" ] || { echo "could not read versionName from $GRADLE_APP/build.gradle"; exit 1; }
@@ -97,16 +99,17 @@ jobs:
           # one match and fail loudly otherwise, rather than shipping the wrong
           # artifact under a confident-looking name.
           collect() {
-            ext=$1 src_dir=$2
-            # shellcheck disable=SC2206
-            matches=($(find "$src_dir" -maxdepth 1 -name "*.$ext" | sort))
-            if [ "${#matches[@]}" -ne 1 ]; then
-              echo "expected exactly one .$ext in $src_dir, found ${#matches[@]}:"
-              printf '  %s\n' "${matches[@]:-<none>}"
+            ext=$1
+            src_dir=$2
+            count=$(find "$src_dir" -maxdepth 1 -name "*.$ext" | wc -l | tr -d ' ')
+            if [ "$count" -ne 1 ]; then
+              echo "expected exactly one .$ext in $src_dir, found $count:"
+              find "$src_dir" -maxdepth 1 -name "*.$ext" | sed 's/^/  /'
               exit 1
             fi
-            cp "${matches[0]}" "out/eidolon-release-$VERSION.$ext"
-            echo "  ${matches[0]} -> eidolon-release-$VERSION.$ext"
+            src=$(find "$src_dir" -maxdepth 1 -name "*.$ext")
+            cp "$src" "out/eidolon-release-$VERSION.$ext"
+            echo "  $src -> eidolon-release-$VERSION.$ext"
           }
           collect aab "$GRADLE_APP/build/outputs/bundle/release"
           collect apk "$GRADLE_APP/build/outputs/apk/release"
