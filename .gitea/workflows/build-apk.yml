@@ -84,15 +84,32 @@ jobs:
       # CI and out of the mirrored upstream Write source.
       - name: Collect artifacts
         run: |
+          set -euo pipefail
           GRADLE_APP=Write/syncscribble/android/app
           VERSION=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' "$GRADLE_APP/build.gradle" | head -1)
           [ -n "$VERSION" ] || { echo "could not read versionName from $GRADLE_APP/build.gradle"; exit 1; }
           echo "versionName: $VERSION"
           mkdir -p out
-          find "$GRADLE_APP/build/outputs/bundle/release" -name "*.aab" \
-            -exec cp {} "out/eidolon-release-$VERSION.aab" \;
-          find "$GRADLE_APP/build/outputs/apk/release" -name "*.apk" \
-            -exec cp {} "out/eidolon-release-$VERSION.apk" \;
+
+          # Copy exactly one file per type. Renaming to a fixed name means a
+          # second, unexpected output (a stray *-unsigned.apk, say) would be
+          # silently collapsed and could even win the race — so require exactly
+          # one match and fail loudly otherwise, rather than shipping the wrong
+          # artifact under a confident-looking name.
+          collect() {
+            ext=$1 src_dir=$2
+            # shellcheck disable=SC2206
+            matches=($(find "$src_dir" -maxdepth 1 -name "*.$ext" | sort))
+            if [ "${#matches[@]}" -ne 1 ]; then
+              echo "expected exactly one .$ext in $src_dir, found ${#matches[@]}:"
+              printf '  %s\n' "${matches[@]:-<none>}"
+              exit 1
+            fi
+            cp "${matches[0]}" "out/eidolon-release-$VERSION.$ext"
+            echo "  ${matches[0]} -> eidolon-release-$VERSION.$ext"
+          }
+          collect aab "$GRADLE_APP/build/outputs/bundle/release"
+          collect apk "$GRADLE_APP/build/outputs/apk/release"
           ls -l out
 
       # Pinned to v3: upload-artifact@v4 requires a backend Gitea Actions does not
