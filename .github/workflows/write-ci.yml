@@ -123,4 +123,5 @@ jobs:
       uses: actions/upload-artifact@v6
       with:
         name: app-release-apk
-        path: Write/syncscribble/android/app/build/outputs/apk/release/app-release.apk
+        # Eidolon build has no release signing config, so gradle emits *-unsigned.apk
+        path: Write/syncscribble/android/app/build/outputs/apk/release/app-release-unsigned.apk
