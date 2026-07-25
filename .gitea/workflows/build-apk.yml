@@ -1,0 +1,97 @@
+name: Build signed APK
+
+# Signed release APK for Eidolon (ca.helu.eidolon), built on Gitea so the
+# heluca-upload keystore never leaves Heluca infra. GitHub (heluca/Write) stays
+# the free public CI + PR-to-upstream path and emits an UNSIGNED apk; this job is
+# the signing path. Source is mirrored here from GitHub — see the repo README.
+#
+# Differs from the r/android template (templates/build.yml) because Write is not a
+# stock Gradle app:
+#   * git submodules (SDL, ulib, pugixml, ...) — SDL must sit on write-android, and
+#     the Heluca forks (heluca/SDL, heluca/ulib) live on PUBLIC GitHub, so the
+#     container clones them without GitHub auth; only this top-level repo is private.
+#   * ndk-build + a committed static curl/mbedTLS prebuilt set built against
+#     NDK r26.3.11579264 — the baked image ships r27 (needs an unpushed SDL ALooper
+#     fix), so we install r26.3 at job time and point AGP at it, exactly as the
+#     GitHub CI does.
+#   * gradlew lives at syncscribble/android/, not the repo root.
+#
+# Signing is injected at job time via -Pandroid.injected.signing.* (Heluca
+# convention, no signingConfig in build.gradle). Without the keystore secret the
+# build would still succeed but emit an unsigned apk — the secrets below make it
+# signed.
+
+on:
+  push:
+    branches: [ master, webdav ]
+  workflow_dispatch:
+
+env:
+  NDK_VERSION: "26.3.11579264"
+
+jobs:
+  build:
+    # amd64: the toolchain image carries x86_64 Android build-tools (Google ships
+    # no arm64 Linux build-tools), so it runs on an amd64 runner.
+    runs-on: ubuntu-24.04
+    container:
+      # :latest — no immutable r/android tag has been cut yet (list_tags is empty);
+      # pin to an immutable :YYYY.MM once one exists. r27 is baked here but unused;
+      # we install r26.3 below to match the committed native prebuilts.
+      image: git.helu.ca/r/android:latest
+      credentials:
+        username: ${{ gitea.actor }}
+        password: ${{ secrets.PACKAGE_TOKEN }}
+    steps:
+      # Explicit clone (not actions/checkout) to recurse submodules the same way the
+      # GitHub CI does. The top-level repo is private, so authenticate with the
+      # built-in token; submodules resolve from public GitHub with no auth.
+      - name: Checkout (this repo + submodules)
+        run: |
+          git clone --recurse-submodules \
+            "https://${{ gitea.actor }}:${{ secrets.GITEA_TOKEN }}@git.helu.ca/${{ gitea.repository }}.git" \
+            --branch "${{ gitea.ref_name }}" Write
+
+      - name: SDL to write-android branch
+        working-directory: Write/SDL
+        run: git switch write-android
+
+      # The baked NDK is r27; install the r26.3 the committed curl/mbedTLS prebuilts
+      # were built against, and point AGP at it via local.properties + env.
+      - name: Install NDK r26.3
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install "ndk;${NDK_VERSION}" >/dev/null
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" > Write/syncscribble/android/local.properties
+          echo "ndk.dir=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> Write/syncscribble/android/local.properties
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/heluca-upload.jks"
+
+      # Signed via -Pandroid.injected.signing.* (no signingConfig in build.gradle).
+      - name: Assemble signed release APK
+        working-directory: Write/syncscribble/android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.3.11579264
+        run: |
+          ./gradlew --no-daemon assembleRelease \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/heluca-upload.jks" \
+            -Pandroid.injected.signing.store.password="${{ secrets.KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.KEY_PASSWORD }}"
+
+      # Injected signing produces app-release.apk (no -unsigned suffix).
+      - name: Collect artifact
+        run: |
+          mkdir -p out
+          find Write/syncscribble/android/app/build/outputs/apk/release -name "*.apk" -exec cp {} out/ \;
+          ls -l out
+
+      # Pinned to v3: upload-artifact@v4 requires a backend Gitea Actions does not
+      # implement and fails with "not supported on GHES".
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: eidolon-release-apk
+          path: out/*.apk
+          if-no-files-found: error
