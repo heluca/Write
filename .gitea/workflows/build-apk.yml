@@ -74,12 +74,25 @@ jobs:
             -Pandroid.injected.signing.key.alias="heluca-upload" \
             -Pandroid.injected.signing.key.password="${{ secrets.UPLOAD_KEY_PASSWORD }}"
 
-      # Injected signing produces app-release.{aab,apk} (no -unsigned suffix).
+      # Injected signing produces app-release.{aab,apk} (no -unsigned suffix) —
+      # a generic name that says nothing about which app or which version you are
+      # holding once the artifact zip has been downloaded and unpacked. Rename on
+      # the way into out/, using the versionName from the app's build.gradle:
+      # eidolon-release-<version>.{aab,apk}, matching r/dade's convention.
+      #
+      # Done here rather than via archivesBaseName so the change stays in Heluca's
+      # CI and out of the mirrored upstream Write source.
       - name: Collect artifacts
         run: |
+          GRADLE_APP=Write/syncscribble/android/app
+          VERSION=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' "$GRADLE_APP/build.gradle" | head -1)
+          [ -n "$VERSION" ] || { echo "could not read versionName from $GRADLE_APP/build.gradle"; exit 1; }
+          echo "versionName: $VERSION"
           mkdir -p out
-          find Write/syncscribble/android/app/build/outputs/bundle/release -name "*.aab" -exec cp {} out/ \;
-          find Write/syncscribble/android/app/build/outputs/apk/release -name "*.apk" -exec cp {} out/ \;
+          find "$GRADLE_APP/build/outputs/bundle/release" -name "*.aab" \
+            -exec cp {} "out/eidolon-release-$VERSION.aab" \;
+          find "$GRADLE_APP/build/outputs/apk/release" -name "*.apk" \
+            -exec cp {} "out/eidolon-release-$VERSION.apk" \;
           ls -l out
 
       # Pinned to v3: upload-artifact@v4 requires a backend Gitea Actions does not
