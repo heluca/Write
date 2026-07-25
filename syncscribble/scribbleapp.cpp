@@ -52,21 +52,11 @@ ScribbleApp::ScribbleApp(int argc, char* argv[])
   const char* appstorage = SDL_AndroidGetExternalStoragePath();
   if(!appstorage)
     appstorage = "/sdcard/Android/data/ca.helu.eidolon/files";  // prevent crash
-  docRoot = "/sdcard/helu/eidolon/";
-  // can't seem to move files into app storage on Android 11, so trash folder needs to be outside it
-  tempPath = "/sdcard/helu/.temp/";
-  // can still access folders w/o permission - alternative would be to check for or create a file (.nomedia?)
-  if(!FSPath(docRoot).exists() || !hasAndroidPermission()) {
-    docRoot = FSPath(appstorage, "/").c_str();
-    tempPath = FSPath(appstorage, ".temp/").c_str();
-  }
-  // use old location if existing config file, but otherwise we want to use appstorage local even if we
-  //  get sdcard permission
-  cfgFile = "/sdcard/helu/eidolon.xml";  // also accept write.xml to make it easier to copy from desktop
-  if(!FSPath(cfgFile).exists())
-    cfgFile = "/sdcard/helu/.eidolon.xml";
-  if(!FSPath(cfgFile).exists())
-    cfgFile = FSPath(appstorage, ".write.xml").c_str();
+  // scoped storage (target API 30+): the app-specific external dir is the only path we can
+  //  write without user-mediated grants; WebDAV sync is the durable copy of documents
+  docRoot = FSPath(appstorage, "/").c_str();
+  tempPath = FSPath(appstorage, ".temp/").c_str();
+  cfgFile = FSPath(appstorage, ".write.xml").c_str();
   savedPath = FSPath(appstorage, ".saved/").c_str();
 #elif PLATFORM_IOS
   const char* ioshome = getenv("HOME");
@@ -305,26 +295,8 @@ void ScribbleApp::init()
   removeDir(tempPath.c_str(), false);
 
 #if PLATFORM_ANDROID
-  // this will cause permission prompt for fresh install
   if(!FSPath(cfgFile).exists())
-    cfg->set("currFolder", "/sdcard/helu/eidolon/");
-  // Android permissions disaster: upgrading from target API 29 w/ write permission to 30 will set permission
-  //  to "media only", which allows some files created by us outside Android/data app folder to be writable,
-  //  others read-only, others neither; can't create new files - so we need to prompt user to grant manage
-  //  files permission or reset to Android/data app folder
-  const char* currfolder = cfg->String("currFolder");
-  if(!hasAndroidPermission()) {
-    if(!StringRef(currfolder).contains("ca.helu.eidolon") && !requestAndroidPermission()) {
-      cfg->set("currFolder", docRoot.c_str());
-      cfg->set("reopenLastDoc", false);  // prevent opening of document from changing currFolder
-      openOrCreateDoc();  // showing dialog prevents delayedShowDocList from working
-      return;
-    }
-  }
-  else if(StringRef(currfolder).startsWith("/sdcard/helu/eidolon/")) {
-    //PLATFORM_LOG("Creating /sdcard/helu/eidolon/\n");
-    createPath("/sdcard/helu/eidolon/");
-  }
+    cfg->set("currFolder", docRoot.c_str());
   // we are now ready to handle initial intent
   //  if we were sent a document to open, openDocument will close doc list that is shown by newDocument()
   AndroidHelper::processInitialIntent();
@@ -790,20 +762,6 @@ bool ScribbleApp::sdlEventHandler(SDL_Event* event)
         appSuspending();
         saveSem.post();  // signal completion to Android thread
       }
-      else if(event->user.code == STORAGE_PERMISSION) {
-        if(event->user.data1) {
-          const char* p = "/sdcard/helu/eidolon/";
-          if(createPath(p)) {
-            docRoot = p;
-            if(cfg->loadConfigFile("/sdcard/helu/.eidolon.xml"))
-              cfgFile = "/sdcard/helu/.eidolon.xml";
-            tempPath = "/sdcard/helu/.temp/";
-            createPath(tempPath.c_str());
-          }
-        }
-        if(!openHelp())
-          openOrCreateDoc();
-      }
 #endif
       return true;
     }
@@ -930,24 +888,15 @@ void iapCompleted(void)
 #elif PLATFORM_ANDROID
 bool ScribbleApp::hasAndroidPermission()
 {
-  // 0x1 - WRITE_EXTERNAL_STORAGE, 0x2 - API level >= 30, 0x4 - MANAGE_EXTERNAL_STORAGE
-  int permis = AndroidHelper::doAction(A_CHECK_PERM);
-  return permis == 0x1 || (permis & 0x4);
-  //return FSPath("/sdcard/helu/eidolon/.nomedia").exists();
+  // scoped storage: nothing outside the app-specific dir is accessible and we don't ask
+  //  (WRITE_EXTERNAL_STORAGE is a no-op at target 30+; MANAGE_EXTERNAL_STORAGE needs Play
+  //  approval we'd never get); docRoot is always writable, so there is nothing to grant
+  return false;
 }
 
 bool ScribbleApp::requestAndroidPermission()
 {
-  if(hasAndroidPermission())
-    return false;  // already has permission
-  auto choice = messageBox(Question, _("Storage Access"),
-      _("To open documents in shared folders, enable storage access for Write."), {_("OK"), _("Cancel")});
-  if(choice != _("OK"))
-    return false;
-  AndroidHelper::doAction(A_REQ_PERM);
-  ScribbleApp::app->appSuspending();
-  finish();
-  return true;
+  return false;  // nothing to request under scoped storage
 }
 #endif
 

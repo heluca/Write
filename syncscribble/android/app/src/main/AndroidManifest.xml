@@ -8,8 +8,8 @@
   <!-- uses-feature android:name="android.hardware.gamepad" android:required="false" / -->
   <uses-feature android:name="android.hardware.type.pc" android:required="false" />
 
-  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+  <!-- no storage permissions: scoped storage (target 30+), everything lives in the
+       app-specific external dir. MANAGE_EXTERNAL_STORAGE would need Play approval. -->
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -25,7 +25,6 @@
   <application android:label="@string/app_name"
     android:icon="@mipmap/icon"
     android:theme="@android:style/Theme.NoTitleBar"
-    android:requestLegacyExternalStorage="true"
     android:allowBackup="true"
     android:hardwareAccelerated="true">
 
@@ -46,6 +45,7 @@
     </provider>
 
     <activity android:name="ca.helu.eidolon.MainActivity"
+      android:exported="true"
       android:label="@string/app_name"
       android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|fontScale|uiMode|density"
       android:launchMode="singleTask">

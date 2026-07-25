@@ -506,18 +506,10 @@ void DocumentList::rebuildDrivesMenu()
     addRoot(title, letter + "/");
   }
 #elif PLATFORM_ANDROID
-  drivesMenu->addItem("styluslabs/write", SvgGui::useFile("icons/ic_drive.svg"), [this](){
-    if(!ScribbleApp::hasAndroidPermission()) {
-      ScribbleApp::cfg->set("currFolder", "/sdcard/styluslabs/write/");
-      if(!ScribbleApp::requestAndroidPermission())
-        ScribbleApp::cfg->set("currFolder", currDir.c_str());
-    }
-    else if(createPath("/sdcard/styluslabs/write/"))
-      setCurrDir("/sdcard/styluslabs/write/");
-  });
-  drivesMenu->addItem("Android/data", SvgGui::useFile("icons/ic_drive.svg"), [this](){
+  // scoped storage: the app-specific dir is the only accessible location
+  drivesMenu->addItem("App storage", SvgGui::useFile("icons/ic_drive.svg"), [this](){
     const char* appstorage = SDL_AndroidGetExternalStoragePath();
-    setCurrDir(appstorage ? appstorage : "/sdcard/Android/data/com.styluslabs.writeqt/files");
+    setCurrDir(appstorage ? appstorage : "/sdcard/Android/data/ca.helu.eidolon/files");
   });
 #else
   // Linux/Mac: filesystem root, home, and any mounted removable media
