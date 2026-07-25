@@ -34,10 +34,10 @@ jobs:
     # no arm64 Linux build-tools), so it runs on an amd64 runner.
     runs-on: ubuntu-24.04
     container:
-      # :latest — no immutable r/android tag has been cut yet (list_tags is empty);
-      # pin to an immutable :YYYY.MM once one exists. The baked NDK r27 is used
-      # directly (app pins the same version).
-      image: git.helu.ca/r/android:latest
+      # Immutable tag (r/android git tag -> CI-built image). Bump deliberately;
+      # never :latest here. The baked NDK r27 is used directly (app pins the
+      # same version).
+      image: git.helu.ca/r/android:2026.07
       credentials:
         username: ${{ gitea.actor }}
         password: ${{ secrets.PACKAGE_TOKEN }}
