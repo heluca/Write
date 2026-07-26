@@ -3,11 +3,7 @@
 A cross-platform handwritten-notes app: vector ink saved as SVG, with WebDAV sync.
 
 Eidolon is a maintained fork of [Write](https://github.com/styluslabs/Write) by Stylus
-Labs (C++/SDL, AGPL-3.0). Upstream development has stopped; this fork keeps the app
-alive — current Android target SDK, modern SDL, and a few new features. It is renamed
-and re-packaged (`ca.helu.eidolon`) to make clear it is **not** a Stylus Labs product:
-all credit for the original app and its architecture belongs to Stylus Labs, and all
-bugs introduced since belong here.
+Labs (C++/SDL, AGPL-3.0). 
 
 Documents are ordinary SVG (gzipped, `.svgz`) — pages, strokes, images, and text are
 all plain SVG elements, viewable in any browser and greppable forever.
