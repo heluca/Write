@@ -29,6 +29,7 @@ public:
   static bool runApplication;
   static bool glRender;
   static bool isSuspended;
+  static unsigned long mainThreadId;  // SDL_threadID of the SDL_main thread
   static SDL_Window* sdlWindow;
   static Painter* painter;
   static std::string appDir;

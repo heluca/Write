@@ -117,6 +117,7 @@ SvgGui* Application::gui = NULL;
 bool Application::runApplication = true;
 bool Application::glRender = false;
 bool Application::isSuspended = false;
+unsigned long Application::mainThreadId = 0;
 SDL_Window* Application::sdlWindow = NULL;
 Painter* Application::painter = NULL;
 std::string Application::appDir;
@@ -124,6 +125,7 @@ std::string Application::appDir;
 static int nvglFBFlags = 0;
 static NVGLUframebuffer* nvglFB = NULL;
 static void* swFB = NULL;
+static int androidExtraSwaps = 0;  // present full frame to all buffers after surface recreation
 #if USE_GL_BLITTER
 static NVGSWUblitter* swBlitter = NULL;
 #endif
@@ -185,6 +187,11 @@ static const char* getLocale()
 // for better text editing (see mapsapp)
 void PLATFORM_setImeText(const char* text, int selStart, int selEnd) {}
 
+// Width (in layout units) the UI needs before the main toolbar starts auto-hiding buttons; the
+//  full toolbar measures ~575 units, so this leaves a little headroom.  Used to cap the DPI we
+//  accept on mobile -- see setupUIScale().
+static const float UI_MIN_WIDTH_UNITS = 640.0f;
+
 // Windows DPI notes: GetDpiForMonitor(MDT_RAW_DPI) returns error (not supported) in Windows 8.1 VM
 // - GetDpiForMonitor(MDT_EFFECTIVE_DPI) is what SDL uses (returns 120; actual is 210 and 125% scaling)
 // - GetDeviceCaps(hdc, HORZSIZE or VERTSIZE) very unreliable; suggested approach is to read EDID with SetupAPI
@@ -223,6 +230,17 @@ void Application::setupUIScale(float horzdpi)
     //}
 #else
     SDL_GetDisplayDPI(0, NULL, &horzdpi, NULL);  // just Android for now
+    // At target API 35+ the system no longer insets our window or scales down the reported
+    //  metrics, so a dense phone screen reports e.g. 480 dpi => paintScale 3.2, which leaves
+    //  the main toolbar needing far more width than the window has (it then auto-hides every
+    //  button).  Cap dpi so the UI is never scaled beyond what the window width can hold;
+    //  same idea as the desktop branch above, which derives dpi from screen size.
+    if(horzdpi > 0 && winWidth > 0) {
+      // 150dpi ref * the UI's minimum comfortable width (in units) => dpi that still fits
+      float maxdpi = 150.0f*float(winWidth)/UI_MIN_WIDTH_UNITS;
+      if(horzdpi > maxdpi)
+        horzdpi = maxdpi;
+    }
 #endif
   }
 #endif
@@ -284,6 +302,7 @@ int SDL_main(int argc, char* argv[])
   // event filter clears SDL event queue, so set it before showing window
   ScribbleApp* scribbleApp = new ScribbleApp(argc, argv);
   ScribbleApp::app = scribbleApp;
+  Application::mainThreadId = (unsigned long)SDL_ThreadID();  // filter behavior depends on calling thread
   SDL_SetEventFilter(sdlEventFilter, scribbleApp);  // for app lifecycle events
 #if PLATFORM_LINUX
   SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");  // play nice with other apps
@@ -533,7 +552,9 @@ void Application::layoutAndDrawSW()
   TRACE(SDL_GL_SwapWindow(sdlWindow));
 
 #if PLATFORM_ANDROID
-  if(sizeChanged) {
+  int extraSwaps = std::max(sizeChanged ? 1 : 0, androidExtraSwaps);
+  androidExtraSwaps = 0;
+  for(int ii = 0; ii < extraSwaps; ++ii) {
     TRACE(nvgswuBlit(swBlitter, swFB, fbWidth, fbHeight,
         int(dirty.left), int(dirty.top), int(dirty.width()), int(dirty.height())));
     TRACE(SDL_GL_SwapWindow(sdlWindow));
@@ -574,6 +595,13 @@ void Application::layoutAndDrawSW()
   }
   int fbWidth = sdlSurface->w;
   int fbHeight = sdlSurface->h;
+  static void* prevPixels = NULL;
+  static int prevW = 0, prevH = 0;
+  if(sdlSurface->pixels != prevPixels || fbWidth != prevW || fbHeight != prevH) {
+    PLATFORM_LOG("SW framebuffer changed: %p %dx%d (was %p %dx%d)\n",
+        sdlSurface->pixels, fbWidth, fbHeight, prevPixels, prevW, prevH);
+    prevPixels = sdlSurface->pixels;  prevW = fbWidth;  prevH = fbHeight;
+  }
   SDL_PixelFormat* fmt = sdlSurface->format;
   nvgswSetFramebuffer(painter->vg, sdlSurface->pixels, fbWidth, fbHeight, fmt->Rshift, fmt->Gshift, fmt->Bshift, 24);
   //SDL_FillRect(sdlSurface, NULL, SDL_MapRGB(sdlSurface->format, 255, 255, 255));
@@ -586,13 +614,16 @@ void Application::layoutAndDrawSW()
   TRACE(painter->endFrame());
   SDL_UnlockSurface(sdlSurface);
 
+  int updateErr = 0;
   if(dirty != painter->deviceRect) {
     SDL_Rect r;
     r.x = int(dirty.left); r.y = int(dirty.top); r.w = int(dirty.width()); r.h = int(dirty.height());
-    TRACE(SDL_UpdateWindowSurfaceRects(sdlWindow, &r, 1));
+    TRACE(updateErr = SDL_UpdateWindowSurfaceRects(sdlWindow, &r, 1));
   }
   else
-    TRACE(SDL_UpdateWindowSurface(sdlWindow));
+    TRACE(updateErr = SDL_UpdateWindowSurface(sdlWindow));
+  if(updateErr != 0)
+    PLATFORM_LOG("SDL_UpdateWindowSurface failed: %s\n", SDL_GetError());
   TRACE_FLUSH();
 }
 #endif
@@ -685,6 +716,24 @@ bool Application::processEvents()
   // use loop to empty event queue before rendering frame, so that user's most recent input is accounted for
   do {
     //PLATFORM_LOG("%s\n", sdlEventLog(&event).c_str());
+#if PLATFORM_MOBILE
+    // app lifecycle and window events are rare but mark exactly the transitions (pause, resume,
+    //  surface recreation) where rendering has historically broken -- always log them
+    if(event.type >= SDL_APP_TERMINATING && event.type <= SDL_APP_DIDENTERFOREGROUND)
+      PLATFORM_LOG("SDL app lifecycle event 0x%X\n", event.type);
+    else if(event.type == SDL_WINDOWEVENT) {
+      PLATFORM_LOG("SDL window event %d\n", event.window.event);
+#if PLATFORM_ANDROID
+      // after the surface is recreated (resume), a single swap of a full frame can land in a buffer
+      //  that is never latched (screen stays black until later swaps); present the next frame to
+      //  every buffer in the queue, like the size-change workaround below
+      if(event.window.event == SDL_WINDOWEVENT_RESTORED)
+        androidExtraSwaps = 2;
+#endif
+    }
+    else if(event.type == SDL_RENDER_DEVICE_RESET || event.type == SDL_RENDER_TARGETS_RESET)
+      PLATFORM_LOG("SDL render reset event 0x%X\n", event.type);
+#endif
     TRACE_SCOPE("sdlEvent: type = %s", sdlEventName(&event).c_str());
 #if IS_DEBUG
     if(event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_PRINTSCREEN) {

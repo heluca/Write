@@ -571,8 +571,16 @@ int ScribbleApp::sdlEventFilter(SDL_Event* event)
   case SDL_APP_LOWMEMORY:
   case SDL_APP_WILLENTERBACKGROUND:
 #if PLATFORM_ANDROID
-    SvgGui::pushUserEvent(scribbleSDLEvent, APP_SUSPEND);
-    saveSem.wait();
+    // SDL 2.0.9 sent these from the Android activity thread, so we handed the save off to the main
+    //  thread and waited.  Newer SDL sends SDL_APP_WILLENTERBACKGROUND from the SDL main thread
+    //  itself (Android_PumpEvents) -- the handoff would then deadlock waiting on our own thread, so
+    //  detect that and save directly (safe: we ARE the thread that owns the document).
+    if((unsigned long)SDL_ThreadID() == Application::mainThreadId)
+      appSuspending();
+    else {
+      SvgGui::pushUserEvent(scribbleSDLEvent, APP_SUSPEND);
+      saveSem.wait();
+    }
 #else
     appSuspending();
 #endif

@@ -20,6 +20,7 @@ import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 import android.util.DisplayMetrics;
 import android.view.Display;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.KeyEvent;
 import android.view.Surface;
@@ -70,6 +71,22 @@ public class MainActivity extends SDLActivity implements View.OnTouchListener, V
     super.onCreate(savedstate);
     getSDLSurfaceView().setOnTouchListener(this);
     getSDLSurfaceView().setOnHoverListener(this);
+    // Android 15+ (with our targetSdk 35) forces edge-to-edge: the window spans the full display
+    //  and the system no longer insets it for the status/navigation bars, which land on top of our
+    //  toolbar.  Pad the SDL surface's parent layout by the system bars so the surface itself (and
+    //  thus the SDL window size) shrinks to the visible area.  Note padding the SurfaceView itself
+    //  does nothing -- SurfaceView ignores its own padding.
+    if(android.os.Build.VERSION.SDK_INT >= 35) {
+      getContentView().setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+        @Override
+        public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+          android.graphics.Insets bars =
+              insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+          v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+          return WindowInsets.CONSUMED;
+        }
+      });
+    }
     //m_instance = this;
     //hasDirectStylus = getPackageManager().hasSystemFeature("com.nvidia.nvsi.feature.DirectStylus");
     // reference: http://developer.android.com/training/sharing/receive.html
