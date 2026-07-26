@@ -274,6 +274,7 @@ Action* MainWindow::modeToAction(int mode)
     case MODE_INSSPACERULED:  return actionRuled_Insert_Space;
     case MODE_INSSPACEVERT:  return actionInsert_Space_Vert;
     case MODE_PAGESEL:  return actionSelect_Pages;
+    case MODE_INSERTTEXT:  return actionInsert_Text;
     default: return NULL;
   }
 }
@@ -1008,6 +1009,10 @@ void MainWindow::setupActions()
       "Page Setup...", ":/icons/ic_menu_document.svg", "", SLOT(showPageSetup()));
   actionInsert_Image = createAction("actionInsert_Image",
       "Insert Image...", ":/icons/ic_menu_add_pic.svg", "", SLOT(insertImage()));
+  actionInsert_Text = createAction("actionInsert_Text",
+      "Text", ":/icons/ic_menu_editbox.svg", "", SLOT(setMode(MODE_INSERTTEXT)));
+  actionInsert_Text->setCheckable(true);
+  actionInsert_Text->tooltip = _("Tap to place a text box");
   // insert pages from another document
   actionInsertDocument = createAction("actionInsertDocument", "Insert Document...", "", "", SLOT(insertDocument()));
   actionShow_Clippings = createAction("actionShow_Clippings",
@@ -1297,6 +1302,7 @@ void MainWindow::setupActions()
   overflowMenu->addSubmenu(_("Selection"), selectionmenu);
   overflowMenu->addAction(actionPage_Setup);
   overflowMenu->addAction(actionInsert_Image);  // move to Document menu?
+  overflowMenu->addAction(actionInsert_Text);
   overflowMenu->addAction(actionPreferences);
 
 #ifdef SCRIBBLE_TEST

@@ -55,6 +55,10 @@ public:
   void setSelProperties(const StrokeProperties* props, const char* target = NULL,
       Element* bkmktarget = NULL, const char* idstr = NULL, bool forcenormal = false);
   void insertImage(Image image); //, bool lossy = false);
+  // create a new text box (opens the text dialog); pos is in screen coords, NaN => view center
+  void insertTextBox(Point pos = Point(NAN, NAN));
+  // open the text dialog to edit an existing text element
+  void editTextBox(Element* s);
 
   // some of these need to be made private
   DocPosition getPos() const;

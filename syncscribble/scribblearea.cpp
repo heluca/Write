@@ -6,6 +6,7 @@
 #include "scribblewidget.h"
 #include "strokebuilder.h"
 #include "bookmarkview.h"
+#include "textbox.h"
 
 
 const Dim ScribbleArea::ERASESTROKE_RADIUS = 7;
@@ -1026,10 +1027,27 @@ DocPosition ScribbleArea::getPos() const
   return DocPosition(currPageNum, dimToPageDim(screenToDim(Point(0,0))));
 }
 
-// double tap to zoom to 100 percent
+// double tap to edit a text box under the cursor, else zoom to 100 percent
 void ScribbleArea::doDblClickAction(Point pos)
 {
   //scribbleDoc->setActiveArea(this);
+  Point gpos = screenToDim(pos);
+  int pagenum = dimToPageNum(gpos);
+  if(pagenum < numPages()) {
+    if(pagenum != currPageNum)
+      setPageNum(pagenum);
+    Point ppos = dimToPageDim(gpos);
+    // search top-most (last) text element containing the point
+    Element* hit = NULL;
+    for(Element* s : currPage->children()) {
+      if(s->node->type() == SvgNode::TEXT && s->bbox().contains(ppos))
+        hit = s;
+    }
+    if(hit) {
+      editTextBox(hit);
+      return;
+    }
+  }
   zoomTo(1, pos.x, pos.y);
   roundZoom(pos.x, pos.y); // update zoom step index
 }
@@ -1212,6 +1230,60 @@ void ScribbleArea::insertImage(Image image)
   clip.addStroke(new Element(new SvgImage(std::move(image), bbox)));
   doPasteAt(&clip, center, PasteFlags(PasteOrigPos | PasteMoveClipboard | PasteUndoable));
   uiChanged(UIState::Paste);
+  doRefresh();
+}
+
+void ScribbleArea::insertTextBox(Point pos)
+{
+  doCancelAction();
+  TextBoxDialog dialog;
+  if(Application::execDialog(&dialog) != Dialog::ACCEPTED || dialog.isEmpty())
+    return;
+
+  SvgText* textnode = new SvgText();
+  dialog.applyTo(textnode);
+  // position: place text baseline near the click point; m_x/m_y are page-local coords (doPasteAt with
+  //  PasteOrigPos keeps the element at its stored position, which must be relative to the target page)
+  Point screenpos = pos.isNaN() ? screenRect.center() : pos;
+  Point gpos = screenToDim(screenpos);
+  Point ppos = dimToPageDim(gpos);
+  textnode->m_x = {ppos.x};
+  textnode->m_y = {ppos.y};
+
+  Clipboard clip;
+  clip.addStroke(new Element(textnode));
+  doPasteAt(&clip, gpos, PasteFlags(PasteOrigPos | PasteMoveClipboard | PasteUndoable));
+  uiChanged(UIState::Paste);
+  doRefresh();
+}
+
+void ScribbleArea::editTextBox(Element* s)
+{
+  if(!s || s->node->type() != SvgNode::TEXT)
+    return;
+  SvgText* oldnode = static_cast<SvgText*>(s->node);
+  TextBoxDialog dialog(oldnode);
+  if(Application::execDialog(&dialog) != Dialog::ACCEPTED)
+    return;
+
+  Page* page = scribbleDoc->document->pageForElement(s);
+  if(!page)
+    return;
+  clearSelection();
+  scribbleDoc->startAction(currPageNum);
+  if(dialog.isEmpty()) {
+    // empty text: delete the element
+    page->removeStroke(s);
+  }
+  else {
+    // replace old element with an edited clone so the change is undoable
+    Element* t = s->cloneNode();
+    dialog.applyTo(static_cast<SvgText*>(t->node));
+    page->addStroke(t, s);
+    page->removeStroke(s);
+  }
+  scribbleDoc->endAction();
+  uiChanged(UIState::SetSelProps);
   doRefresh();
 }
 
@@ -1467,6 +1539,13 @@ void ScribbleArea::doPressEvent(const InputEvent& event)
   case MODE_PAN:
     panZoomStart(event);
     break;
+  case MODE_INSERTTEXT:
+    // tap-to-place text tool: open the (modal) text dialog at the tap point; the tool is single-use, so
+    //  revert to the previous sticky mode afterward
+    insertTextBox(rawpos);
+    currMode = MODE_NONE;
+    scribbleDoc->scribbleDone();
+    return;
   case MODE_STROKE:
   {
     const ScribblePen* pen = currPen();

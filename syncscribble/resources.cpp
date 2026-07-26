@@ -131,6 +131,53 @@ void setupResources()
       PLATFORM_LOG("Failed to load font %s\n", userFont.toString().c_str());
   }
 
+  // Fonts for the text box tool (TextBoxDialog::fontFamilies()).  Family names map to fonts loaded under the
+  // same name; a "<name>-bold"/"-italic"/"-bold-italic" face is used for bold/italic if loaded (setFontFamily
+  // in painter.cpp), else bold is synthesized from font-weight and italic falls back to the regular face.
+  // Each family is loaded from the first available candidate path; missing families fall back to ui-sans.
+  auto loadFontFamily = [](const char* name, std::initializer_list<const char*> paths) {
+    for(const char* p : paths) {
+      if(p && p[0] && Painter::loadFont(name, p))
+        return;
+    }
+  };
+  // Note: an unrecognized family (e.g. "sans-serif" when no face below is loaded) falls back to the
+  // always-available bundled ui-sans font, so it is safe to leave families unloaded.
+#if PLATFORM_LINUX
+  loadFontFamily("sans-serif", {"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"});
+  loadFontFamily("sans-serif-bold", {"/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"});
+  loadFontFamily("sans-serif-italic", {"/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf"});
+  loadFontFamily("sans-serif-bold-italic", {"/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf"});
+  loadFontFamily("serif", {"/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+      "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"});
+  loadFontFamily("serif-bold", {"/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+      "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"});
+  loadFontFamily("serif-italic", {"/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+      "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf"});
+  loadFontFamily("monospace", {"/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf"});
+  loadFontFamily("monospace-bold", {"/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"});
+  loadFontFamily("monospace-italic", {"/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf"});
+#elif PLATFORM_WIN
+  loadFontFamily("sans-serif", {"C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf"});
+  loadFontFamily("sans-serif-bold", {"C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/arialbd.ttf"});
+  loadFontFamily("sans-serif-italic", {"C:/Windows/Fonts/segoeuii.ttf", "C:/Windows/Fonts/ariali.ttf"});
+  loadFontFamily("sans-serif-bold-italic", {"C:/Windows/Fonts/segoeuiz.ttf", "C:/Windows/Fonts/arialbi.ttf"});
+  loadFontFamily("serif", {"C:/Windows/Fonts/times.ttf"});
+  loadFontFamily("serif-bold", {"C:/Windows/Fonts/timesbd.ttf"});
+  loadFontFamily("serif-italic", {"C:/Windows/Fonts/timesi.ttf"});
+  loadFontFamily("serif-bold-italic", {"C:/Windows/Fonts/timesbi.ttf"});
+  loadFontFamily("monospace", {"C:/Windows/Fonts/consola.ttf", "C:/Windows/Fonts/cour.ttf"});
+  loadFontFamily("monospace-bold", {"C:/Windows/Fonts/consolab.ttf", "C:/Windows/Fonts/courbd.ttf"});
+  loadFontFamily("monospace-italic", {"C:/Windows/Fonts/consolai.ttf", "C:/Windows/Fonts/couri.ttf"});
+#elif PLATFORM_OSX
+  loadFontFamily("serif", {"/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+      "/Library/Fonts/Times New Roman.ttf"});
+  loadFontFamily("serif-bold", {"/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf"});
+  loadFontFamily("serif-italic", {"/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf"});
+  loadFontFamily("monospace", {"/System/Library/Fonts/Menlo.ttc", "/System/Library/Fonts/Courier.ttc"});
+#endif
+
   loadIconRes();
   // hook to support loading from resources; can we move this somewhere to deduplicate w/ other projects?
   SvgParser::openStream = [](const char* name) -> std::istream* {
