@@ -176,6 +176,15 @@ void setupResources()
   loadFontFamily("serif-bold", {"/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf"});
   loadFontFamily("serif-italic", {"/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf"});
   loadFontFamily("monospace", {"/System/Library/Fonts/Menlo.ttc", "/System/Library/Fonts/Courier.ttc"});
+#elif PLATFORM_ANDROID
+  // Modern Android ships Roboto as a single variable font (no separate bold/italic files), so sans-serif
+  //  bold is synthesized and italic falls back to regular.  NotoSerif still has all four static faces.
+  loadFontFamily("sans-serif", {"/system/fonts/Roboto-Regular.ttf", "/system/fonts/RobotoStatic-Regular.ttf"});
+  loadFontFamily("serif", {"/system/fonts/NotoSerif-Regular.ttf"});
+  loadFontFamily("serif-bold", {"/system/fonts/NotoSerif-Bold.ttf"});
+  loadFontFamily("serif-italic", {"/system/fonts/NotoSerif-Italic.ttf"});
+  loadFontFamily("serif-bold-italic", {"/system/fonts/NotoSerif-BoldItalic.ttf"});
+  loadFontFamily("monospace", {"/system/fonts/DroidSansMono.ttf", "/system/fonts/CutiveMono.ttf"});
 #endif
 
   loadIconRes();

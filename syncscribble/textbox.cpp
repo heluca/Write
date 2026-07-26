@@ -45,11 +45,15 @@ TextBoxDialog::TextBoxDialog(const SvgText* srcNode) : Dialog(createDialogNode()
     if(sz > 0)
       spinSize->setValue(sz);
 
+    // font-weight and font-style are parsed into typed attributes when a document is loaded
+    //  (bold -> 700, italic -> Painter::StyleItalic), so the string form only exists before the
+    //  first save -- check both
     const char* fw = srcNode->getStringAttr("font-weight");
-    if(fw && strcmp(fw, "bold") == 0)
+    if((fw && strcmp(fw, "bold") == 0) || srcNode->getIntAttr("font-weight", 400) >= 550)
       cbBold->setChecked(true);
     const char* fs = srcNode->getStringAttr("font-style");
-    if(fs && strcmp(fs, "italic") == 0)
+    if((fs && strcmp(fs, "italic") == 0)
+        || srcNode->getIntAttr("font-style", Painter::StyleNormal) == Painter::StyleItalic)
       cbItalic->setChecked(true);
 
     Color c = srcNode->getColorAttr("fill", Color::BLACK);
@@ -73,14 +77,18 @@ TextBoxDialog::TextBoxDialog(const SvgText* srcNode) : Dialog(createDialogNode()
     row->addWidget(control);
     return row;
   };
-  Widget* styleRow = createRow({}, "0 0", "space-between");
-  styleRow->node->setAttribute("box-anchor", "hfill");
-  styleRow->addWidget(labeled(_("Font"), comboFont));
-  styleRow->addWidget(labeled(_("Size"), spinSize));
-  styleRow->addWidget(labeled(_("Bold"), cbBold));
-  styleRow->addWidget(labeled(_("Italic"), cbItalic));
-  styleRow->addWidget(labeled(_("Color"), colorPicker));
-  dialogBody->addWidget(styleRow);
+  // two rows so the dialog fits phone-width windows (~450 units; one row of all five controls doesn't)
+  Widget* styleRow1 = createRow({}, "0 0", "space-between");
+  styleRow1->node->setAttribute("box-anchor", "hfill");
+  styleRow1->addWidget(labeled(_("Font"), comboFont));
+  styleRow1->addWidget(labeled(_("Size"), spinSize));
+  dialogBody->addWidget(styleRow1);
+  Widget* styleRow2 = createRow({}, "0 0", "space-between");
+  styleRow2->node->setAttribute("box-anchor", "hfill");
+  styleRow2->addWidget(labeled(_("Bold"), cbBold));
+  styleRow2->addWidget(labeled(_("Italic"), cbItalic));
+  styleRow2->addWidget(labeled(_("Color"), colorPicker));
+  dialogBody->addWidget(styleRow2);
 
   // color picker must be in the document before setColor works
   colorPicker->setColor(color);

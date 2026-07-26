@@ -59,6 +59,8 @@ public:
   void insertTextBox(Point pos = Point(NAN, NAN));
   // open the text dialog to edit an existing text element
   void editTextBox(Element* s);
+  // topmost text element under a screen position, or NULL
+  Element* textBoxAt(Point pos);
 
   // some of these need to be made private
   DocPosition getPos() const;

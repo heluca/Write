@@ -1027,26 +1027,32 @@ DocPosition ScribbleArea::getPos() const
   return DocPosition(currPageNum, dimToPageDim(screenToDim(Point(0,0))));
 }
 
+// topmost (last) text element under a screen position, or NULL; changes current page if needed
+Element* ScribbleArea::textBoxAt(Point pos)
+{
+  Point gpos = screenToDim(pos);
+  int pagenum = dimToPageNum(gpos);
+  if(pagenum >= numPages())
+    return NULL;
+  if(pagenum != currPageNum)
+    setPageNum(pagenum);
+  Point ppos = dimToPageDim(gpos);
+  Element* hit = NULL;
+  for(Element* s : currPage->children()) {
+    if(s->node->type() == SvgNode::TEXT && s->bbox().contains(ppos))
+      hit = s;
+  }
+  return hit;
+}
+
 // double tap to edit a text box under the cursor, else zoom to 100 percent
 void ScribbleArea::doDblClickAction(Point pos)
 {
   //scribbleDoc->setActiveArea(this);
-  Point gpos = screenToDim(pos);
-  int pagenum = dimToPageNum(gpos);
-  if(pagenum < numPages()) {
-    if(pagenum != currPageNum)
-      setPageNum(pagenum);
-    Point ppos = dimToPageDim(gpos);
-    // search top-most (last) text element containing the point
-    Element* hit = NULL;
-    for(Element* s : currPage->children()) {
-      if(s->node->type() == SvgNode::TEXT && s->bbox().contains(ppos))
-        hit = s;
-    }
-    if(hit) {
-      editTextBox(hit);
-      return;
-    }
+  Element* hit = textBoxAt(pos);
+  if(hit) {
+    editTextBox(hit);
+    return;
   }
   zoomTo(1, pos.x, pos.y);
   roundZoom(pos.x, pos.y); // update zoom step index
@@ -1540,12 +1546,19 @@ void ScribbleArea::doPressEvent(const InputEvent& event)
     panZoomStart(event);
     break;
   case MODE_INSERTTEXT:
-    // tap-to-place text tool: open the (modal) text dialog at the tap point; the tool is single-use, so
-    //  revert to the previous sticky mode afterward
-    insertTextBox(rawpos);
+  {
+    // tap-to-place text tool: open the (modal) text dialog at the tap point -- editing the existing text
+    //  box under the tap if there is one (the double-tap edit path is unreachable when touch input draws,
+    //  so the tool itself must offer editing).  The tool is single-use: revert to previous sticky mode.
+    Element* hit = textBoxAt(rawpos);
+    if(hit)
+      editTextBox(hit);
+    else
+      insertTextBox(rawpos);
     currMode = MODE_NONE;
     scribbleDoc->scribbleDone();
     return;
+  }
   case MODE_STROKE:
   {
     const ScribblePen* pen = currPen();
