@@ -24,8 +24,11 @@ each Play target-SDK deadline (Aug 31).
 | Mac clone (this machine) | `~/gh/eidolon`, origin = Gitea `r/eidolon` (SSH) |
 | Linux box clones | `~/gh/Write` (GitHub), `~/git/eidolon` (Gitea) — manual cross-push, NOT a Gitea mirror |
 
-As of this handoff Gitea master is current; **the GitHub public repo has not been pushed from
-the Mac** (no GitHub remote configured here) — cross-push from the Linux box, or add the remote.
+The Mac clone now has a `github` remote (`git@github.com:heluca/Write.git`, SSH — it was
+configured with an HTTPS URL, which fetches fine but cannot push), so the cross-push can be
+done from here: `git push github master` plus the tag. As of v0.2.0 both repos are level at
+`ba7eccc`, and tags `v0.1.0`/`v0.2.0` exist on both. Note `gh` is not authenticated on this
+machine, so GitHub run status has to be read in a browser.
 
 Submodules: `SDL` → `github.com/heluca/SDL` **branch `write-android`**, `ulib` → `heluca/ulib`,
 rest upstream. Clone with `--recurse-submodules`.
@@ -112,6 +115,12 @@ Run #20 (id 683) green on `3ac7e54`.
 - `v0.1.0` is tagged at `c4fdef8` (the commit CI run #13 built — note this includes
   `dce699a` UI enlargement, which landed after the 3ec6db6 version-bump commit), with a
   Gitea release pointing at the run-13 artifacts.
+- `v0.2.0` is tagged at `ba7eccc`, the merge commit of PR #1 (the release/0.2.0 bump) and
+  the commit runs #23/#24 built — versionCode 200, text boxes. First release with a Linux
+  tarball alongside the Android artifacts. Note the PR itself built nothing: both Gitea
+  workflows are `on: push` to master/webdav with no `pull_request` trigger, so a release
+  PR only produces artifacts once it merges. Cross-pushed to GitHub along with v0.1.0,
+  which had never been pushed there.
 
 ## The three bugs fixed this session — CHECK OTHER PLATFORMS
 
