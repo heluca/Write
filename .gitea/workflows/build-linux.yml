@@ -1,0 +1,148 @@
+name: Build Linux release
+
+# Linux release tarball for Eidolon, built on Gitea alongside the Android job
+# (build-apk.yml).  GitHub (heluca/Write) also builds Linux via write-ci.yml on the
+# x.y.0 cross-pushes; this job makes Linux a first-class per-push target here rather
+# than something that only gets exercised at minor releases.
+#
+# Two deliberate differences from the GitHub Linux job:
+#
+#   * Debian bookworm container, not a bare ubuntu-24.04 runner.  The Makefile's
+#     upstream `tgz` target expects a Debian chroot (see the comment block at the
+#     end of syncscribble/Makefile) because the binary must link against an old
+#     enough glibc to run on distros other than the build host's.  A plain
+#     ubuntu-24.04 runner links glibc 2.39 and the tarball then only runs on 24.04+.
+#     Gitea already runs jobs in a container, so we get the chroot's effect without
+#     the sudo/mount dance -- we run `real_tgz` directly (the `tgz` target IS the
+#     chroot wrapper, so calling it here would try to chroot inside a container).
+#     Bookworm, not the bullseye that upstream's comment names: bullseye's LTS ends
+#     2026-08-31, and bookworm's glibc 2.36 floor still covers Ubuntu 22.04+,
+#     Debian 12+, and RHEL 10 -- old enough to be worth the container.
+#
+#   * USE_SYSTEM_SDL=1, so no SDL submodule build.  The alternative, matching
+#     GitHub, is the write-linux SDL branch -- but that is SDL 2.0.10, an older
+#     lineage than the 2.32.10 this fork moved to for Android, and .gitmodules pins
+#     SDL to write-android, so nothing pins a Linux SDL commit for CI to build.
+#     System SDL2 is also what the README documents for a Linux build.
+#
+# SDL is therefore linked DYNAMICALLY (pkg-config, see USE_SYSTEM_SDL in
+# syncscribble/Makefile), so the tarball needs libsdl2 on the target machine.  That
+# is upstream's intended model, not an oversight: scribbleres/linux/setup.sh, which
+# ships inside the tarball, installs libsdl2 via the user's package manager on first
+# run.  Bookworm's SDL is 2.26, past the 2.24 that fixed SDL_WaitEvent's busy-wait
+# (see the comment in Application::processEvents) -- though that path is only taken
+# on Windows/iOS/macOS anyway, since Linux falls through to plain SDL_WaitEvent.
+#
+# Unsigned: there is nothing to sign a Linux tarball with, so unlike build-apk.yml
+# this job needs no keystore secrets.
+
+on:
+  push:
+    branches: [ master, webdav ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container:
+      # Pinned to a bookworm point release rather than :bookworm so a base-image
+      # refresh can't silently move glibc under the portability claim above.
+      image: debian:bookworm-20260713
+    steps:
+      # The base image is minimal: git and the toolchain are not present.  Install
+      # before the clone, since the clone itself needs git.
+      #   build-essential  - gcc/g++/make
+      #   libsdl2-dev      - USE_SYSTEM_SDL=1
+      #   libcurl4-openssl-dev, libsecret-1-dev - WebDAV sync + keychain (PKGS in Makefile)
+      #   libx11-dev, libxi-dev - linuxtablet.c links -lX11 -lXi
+      #   libgl1-mesa-dev  - nanovgXC/glad GL entry points
+      #   ca-certificates  - HTTPS clone of the submodules from GitHub
+      - name: Install build dependencies
+        run: |
+          set -eu
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential git ca-certificates \
+            libsdl2-dev libcurl4-openssl-dev libsecret-1-dev \
+            libx11-dev libxi-dev libgl1-mesa-dev
+
+      # Explicit clone (not actions/checkout) to recurse submodules, same as the
+      # Android job.  This repo is private, so authenticate with the built-in token;
+      # the submodules are public on GitHub and resolve without auth.
+      - name: Checkout (this repo + submodules)
+        run: |
+          git clone --recurse-submodules \
+            "https://${{ gitea.actor }}:${{ secrets.GITEA_TOKEN }}@git.helu.ca/${{ gitea.repository }}.git" \
+            --branch "${{ gitea.ref_name }}" Write
+
+      # The Makefile derives APPVERSION and SCRIBBLE_REV_NUMBER from `git rev-list`
+      # and `git rev-parse` in the source tree.  Newer git refuses to read a repo
+      # owned by another uid ("detected dubious ownership"), which is the case for a
+      # clone made in a container step; without this those shell-outs return empty
+      # and the build silently gets a blank revision string.
+      - name: Trust the clone's ownership
+        run: git config --global --add safe.directory '*'
+
+      # No SDL submodule build and no branch gate here: the Makefile's branch check
+      # is in the Android makefile, and USE_SYSTEM_SDL=1 skips ../SDL entirely.
+      #
+      # real_tgz, not tgz: `tgz` is upstream's chroot wrapper (sudo mount + chroot),
+      # which is exactly what running in a Debian container replaces.  real_tgz is
+      # the target that actually builds and packages.
+      - name: Build Linux release tarball
+        working-directory: Write/syncscribble
+        run: make DEBUG=0 USE_SYSTEM_SDL=1 real_tgz
+
+      # The Makefile names the tarball write<GITCOUNT>.tar.gz -- a commit count, which
+      # says nothing about which release you are holding.  Rename to match the Android
+      # job's convention (eidolon-release-<versionName>.tar.gz), reading versionName
+      # from the same build.gradle so all three artifacts of a release agree.
+      #
+      # Kept in CI rather than changing TGZ in the Makefile so the mirrored upstream
+      # Write source stays untouched.
+      - name: Collect artifact
+        run: |
+          # POSIX sh only: `run:` steps execute under dash in this image -- no
+          # pipefail, no arrays.
+          set -eu
+          GRADLE_APP=Write/syncscribble/android/app
+          VERSION=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' "$GRADLE_APP/build.gradle" | head -1)
+          [ -n "$VERSION" ] || { echo "could not read versionName from $GRADLE_APP/build.gradle"; exit 1; }
+          echo "versionName: $VERSION"
+          mkdir -p out
+
+          # Require exactly one tarball.  A fixed destination name would silently
+          # collapse a second, unexpected output and could ship the wrong file under
+          # a confident-looking name -- fail loudly instead.
+          SRC_DIR=Write/syncscribble/Release
+          count=$(find "$SRC_DIR" -maxdepth 1 -name '*.tar.gz' | wc -l | tr -d ' ')
+          if [ "$count" -ne 1 ]; then
+            echo "expected exactly one .tar.gz in $SRC_DIR, found $count:"
+            find "$SRC_DIR" -maxdepth 1 -name '*.tar.gz' | sed 's/^/  /'
+            exit 1
+          fi
+          src=$(find "$SRC_DIR" -maxdepth 1 -name '*.tar.gz')
+          cp "$src" "out/eidolon-release-$VERSION.tar.gz"
+          echo "  $src -> eidolon-release-$VERSION.tar.gz"
+          ls -l out
+
+      # Record the glibc floor the binary actually ended up with, so the portability
+      # claim in this file's header is verifiable per-run instead of assumed.  The
+      # Makefile's own `strings | grep ^GLIBC_` runs during real_tgz but only over
+      # the unstripped binary and without reporting a maximum.
+      - name: Report glibc requirement
+        run: |
+          set -eu
+          BIN=Write/syncscribble/Release/Write_unstripped
+          [ -f "$BIN" ] || { echo "no unstripped binary at $BIN; skipping"; exit 0; }
+          echo "highest glibc symbol version required:"
+          strings "$BIN" | sed -n 's/^GLIBC_\([0-9.]*\)$/\1/p' | sort -V -u | tail -1
+
+      # Pinned to v3: upload-artifact@v4 requires a backend Gitea Actions does not
+      # implement and fails with "not supported on GHES".
+      - name: Upload Linux tarball
+        uses: actions/upload-artifact@v3
+        with:
+          name: eidolon-release-linux-tgz
+          path: out/*.tar.gz
+          if-no-files-found: error
