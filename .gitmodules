@@ -29,5 +29,6 @@
 	ignore = untracked
 [submodule "ugui"]
 	path = ugui
-	url = https://github.com/styluslabs/ugui.git
+	url = https://github.com/heluca/ugui.git
+	branch = textbox
 	ignore = untracked
