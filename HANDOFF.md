@@ -118,6 +118,35 @@ event, and render-reset event is logged — use it on any platform before theori
    identical. Also note the SDL 2.32.10 upgrade has only been exercised on Android; check the
    xcode project still builds against it.
 
+## Text tool (integrated from the `textbox` branches, then refined)
+
+Robert's text-box tool (Write `textbox` branch + ugui `textbox` branch, both on GitHub) is now
+on master: overflow menu → Text → tap to place an SVG `<text>` element; dialog offers
+multi-line text, font family (sans-serif/serif/monospace), size, colour, bold, italic.
+Text elements are ordinary Elements — move/scale/erase/undo/save all work. The ugui
+submodule now points at **heluca/ugui** (`.gitmodules` changed) for multi-line TextEdit.
+
+Refinements made on the Mac (all emulator-verified at target 36):
+- Dialog style controls split into two rows — one row overflowed phone-width windows.
+- Android font loading added (`resources.cpp`): Roboto (sans, single variable face —
+  bold synthesized, no italic), NotoSerif regular/bold/italic/bold-italic, DroidSansMono.
+- **Tap-to-edit**: the Text tool now edits the existing text box under the tap instead of
+  creating a new one. This matters because double-tap-to-edit is only reachable when the
+  input is a pan-gesture (`panZoomFinish` → `doDblClickAction`); with `singleTouchMode=2`
+  (draw — the default, and what finger-only phones use) a double tap just draws two dots.
+- Bold/italic now repopulate when editing a loaded doc — usvg parses `font-weight`/`font-style`
+  into typed enum attrs (700 / `Painter::StyleItalic`) on load, so the dialog checks both forms.
+
+Known rough edges, deliberately deferred:
+- **Cursor renders several lines tall** in the multi-line TextEdit (cosmetic; the rect is set
+  to ML_LINE_HEIGHT=20 units in `ugui/textedit.cpp` `createMultilineTextEdit` but renders ~5×
+  that — something in the widget prototype/CSS scales it; debug in ugui).
+- **IME overlap untested on hardware**: the emulator only shows the floating hardware-assist
+  keyboard. On a phone the full IME may cover the dialog's lower rows (manifest has no
+  `windowSoftInputMode`; SDL pans the window on iOS but not Android). Test on the real device.
+- Selection context menu has no Edit entry for text boxes (workarounds: Text tool tap, or
+  double-finger-tap in pan mode).
+
 ## Recent work (newest first)
 
 - `4e221f1` **target API 36** (Play floor Aug 31 2026) + manifest
