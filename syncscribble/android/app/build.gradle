@@ -9,8 +9,8 @@ android {
         applicationId "ca.helu.eidolon"
         // Heluca convention: versionCode = MAJOR*10000 + MINOR*100 + PATCH
         // (fresh applicationId — versioning independent of upstream Write's)
-        versionCode 1
-        versionName "0.0.1"
+        versionCode 100
+        versionName "0.1.0"
         // SDK 18 for GLES 3.0 (linking fails for ES3.1 fns for armv7), SDK 21 for GLES 3.1
         minSdkVersion 21
         targetSdkVersion 36   // Play floor from Aug 31 2026; storage is scoped-storage-only
