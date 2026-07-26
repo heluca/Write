@@ -187,10 +187,11 @@ static const char* getLocale()
 // for better text editing (see mapsapp)
 void PLATFORM_setImeText(const char* text, int selStart, int selEnd) {}
 
-// Width (in layout units) the UI needs before the main toolbar starts auto-hiding buttons; the
-//  full toolbar measures ~575 units, so this leaves a little headroom.  Used to cap the DPI we
-//  accept on mobile -- see setupUIScale().
-static const float UI_MIN_WIDTH_UNITS = 640.0f;
+// Minimum width (in layout units) we guarantee the UI; used to cap the DPI we accept on mobile --
+//  see setupUIScale().  The full main toolbar measures ~575 units, so below ~640 the lowest
+//  ui-priority buttons drop into the overflow menu -- an accepted trade: 640 made buttons ~28dp
+//  on a 480 dpi phone, well under the 48dp Android norm and too small to hit comfortably.
+static const float UI_MIN_WIDTH_UNITS = 450.0f;
 
 // Windows DPI notes: GetDpiForMonitor(MDT_RAW_DPI) returns error (not supported) in Windows 8.1 VM
 // - GetDpiForMonitor(MDT_EFFECTIVE_DPI) is what SDL uses (returns 120; actual is 210 and 125% scaling)
