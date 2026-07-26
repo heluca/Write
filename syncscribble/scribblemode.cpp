@@ -52,6 +52,8 @@ int ScribbleMode::getModeType(int mode)
     return MODE_INSSPACE;
   case MODE_PAGESEL:
     return MODE_PAGESEL;
+  case MODE_INSERTTEXT:
+    return MODE_INSERTTEXT;
   }
   return 0;  // to suppress compiler warning
 }

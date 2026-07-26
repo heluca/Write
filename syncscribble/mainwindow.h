@@ -106,6 +106,7 @@ public:
   Action* actionSend_HTML;
   Action* actionSend_PDF;
   Action* actionInsert_Image;
+  Action* actionInsert_Text;
   Action* actionShare_Document;
   Action* actionOpen_Shared_Doc;
   Action* actionSendImmed;

@@ -34,6 +34,7 @@ SOURCES = \
   rulingdialog.cpp \
   configdialog.cpp \
   linkdialog.cpp \
+  textbox.cpp \
   pentoolbar.cpp \
   syncdialog.cpp \
   touchwidgets.cpp \
