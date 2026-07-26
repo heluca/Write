@@ -16,8 +16,9 @@ name: Build Linux release
 #     the sudo/mount dance -- we run `real_tgz` directly (the `tgz` target IS the
 #     chroot wrapper, so calling it here would try to chroot inside a container).
 #     Bookworm, not the bullseye that upstream's comment names: bullseye's LTS ends
-#     2026-08-31, and bookworm's glibc 2.36 floor still covers Ubuntu 22.04+,
-#     Debian 12+, and RHEL 10 -- old enough to be worth the container.
+#     2026-08-31.  Bookworm's glibc is 2.36, and the binary actually comes out
+#     needing only 2.34 (measured by the last step) -- so it runs on Ubuntu 22.04+
+#     and Debian 12+, which is old enough to be worth the container.
 #
 #   * USE_SYSTEM_SDL=1, so no SDL submodule build.  The alternative, matching
 #     GitHub, is the write-linux SDL branch -- but that is SDL 2.0.10, an older
@@ -57,12 +58,19 @@ jobs:
       #   libx11-dev, libxi-dev - linuxtablet.c links -lX11 -lXi
       #   libgl1-mesa-dev  - nanovgXC/glad GL entry points
       #   ca-certificates  - HTTPS clone of the submodules from GitHub
+      #   nodejs           - NOT a build dependency: actions/upload-artifact is a
+      #                      JavaScript action, and the runner execs it with `node`
+      #                      *inside this container*.  The stock debian image has no
+      #                      node, so the upload step dies with
+      #                      `exec: "node": executable file not found in $PATH`
+      #                      after a completely successful build.  The Android job
+      #                      never hits this because its r/android image ships node.
       - name: Install build dependencies
         run: |
           set -eu
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential git ca-certificates \
+            build-essential git ca-certificates nodejs \
             libsdl2-dev libcurl4-openssl-dev libsecret-1-dev \
             libx11-dev libxi-dev libgl1-mesa-dev
 
