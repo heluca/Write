@@ -176,8 +176,9 @@ DMGRES = ../scribbleres/macos/Readme.txt
 
 include Makefile.mac
 
-else ifneq ($(XPC_FLAGS),)
-# iOS (XPC_FLAGS seems to be defined on macOS)
+else ifeq ($(BUILD_SHARED_LIBRARY)$(if $(XPC_FLAGS),ios,),ios)
+# iOS (XPC_FLAGS seems to be defined on macOS -- so we must also require that ndk-build is not
+# driving this make, else an Android build on a Mac lands here instead of the Android branch)
 
 SOURCES += ios/ioshelper.m
 DEFS += GLES_SILENCE_DEPRECATION
