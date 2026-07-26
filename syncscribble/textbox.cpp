@@ -77,17 +77,35 @@ TextBoxDialog::TextBoxDialog(const SvgText* srcNode) : Dialog(createDialogNode()
     row->addWidget(control);
     return row;
   };
-  // two rows so the dialog fits phone-width windows (~450 units; one row of all five controls doesn't)
-  Widget* styleRow1 = createRow({}, "0 0", "space-between");
+  // Two rows so the dialog fits phone-width windows (~450 units; one row of all five controls doesn't).
+  //  Each row is split into two equal halves that line up with the Cancel/OK buttons below: those are
+  //  #pushbutton (box-anchor="fill") in a flex row, so they take exactly half the dialog width each.
+  //  Matching that split -- rather than hand-tuned margins or stretches -- is what makes the columns
+  //  align, and it gives each control group a definite width instead of one squeezing out another.
+  //  The 0 4 margin matches the button container's own "5 4", so the halves start at the same x as the
+  //  buttons rather than 4 units inboard of them.
+  auto halfCell = [](Widget* content) {
+    Widget* cell = createRow({}, "0 4", "flex-start");
+    cell->node->setAttribute("box-anchor", "hfill");
+    cell->addWidget(content);
+    return cell;
+  };
+  Widget* styleRow1 = createRow({}, "0 0", "flex-start");
   styleRow1->node->setAttribute("box-anchor", "hfill");
-  styleRow1->addWidget(labeled(_("Font"), comboFont));
-  styleRow1->addWidget(labeled(_("Size"), spinSize));
+  styleRow1->addWidget(halfCell(labeled(_("Font"), comboFont)));
+  styleRow1->addWidget(halfCell(labeled(_("Size"), spinSize)));
   dialogBody->addWidget(styleRow1);
-  Widget* styleRow2 = createRow({}, "0 0", "space-between");
+  // Left half holds Bold + Italic (both fit within one button's width); right half holds Color, so the
+  //  "Color" label starts at the same x as the OK button below it.
+  Widget* styleRow2 = createRow({}, "0 0", "flex-start");
   styleRow2->node->setAttribute("box-anchor", "hfill");
-  styleRow2->addWidget(labeled(_("Bold"), cbBold));
-  styleRow2->addWidget(labeled(_("Italic"), cbItalic));
-  styleRow2->addWidget(labeled(_("Color"), colorPicker));
+  Widget* boldItalic = createRow({}, "0 0", "flex-start");
+  Widget* boldItem = labeled(_("Bold"), cbBold);
+  boldItem->node->setAttribute("margin", "0 16 0 0");  // fixed gap so Italic doesn't crowd Bold
+  boldItalic->addWidget(boldItem);
+  boldItalic->addWidget(labeled(_("Italic"), cbItalic));
+  styleRow2->addWidget(halfCell(boldItalic));
+  styleRow2->addWidget(halfCell(labeled(_("Color"), colorPicker)));
   dialogBody->addWidget(styleRow2);
 
   // color picker must be in the document before setColor works
