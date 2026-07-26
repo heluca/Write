@@ -11,8 +11,10 @@ to GitHub, which additionally builds Windows. Patch and interim releases stay on
 
 ## [Unreleased]
 
-**Builds:** Android (AAB + sideload APK), Linux (x86-64 tarball, needs glibc 2.34+ —
-Ubuntu 22.04+/Debian 12+, and libsdl2 which the bundled `setup.sh` installs)
+## [0.2.0] — 2026-07-26
+
+**Builds:** Android (AAB + sideload APK, versionCode 200), Linux (x86-64 tarball, needs
+glibc 2.34+ — Ubuntu 22.04+/Debian 12+, and libsdl2 which the bundled `setup.sh` installs)
 
 ### Added
 - Text tool: place styled text boxes (font family, size, color, bold/italic) as SVG
@@ -23,6 +25,9 @@ Ubuntu 22.04+/Debian 12+, and libsdl2 which the bundled `setup.sh` installs)
   (Roboto, Noto Serif, mono). The multi-line editor shows a correctly sized caret that
   tracks the line it is on, with its drag handle attached, and the dialog's style
   controls line up in two columns that fit a phone screen.
+- Linux builds are produced for every release again, not just the ones cross-pushed to
+  GitHub. The tarball is self-contained apart from SDL, which `setup.sh` installs on
+  first run.
 
 ## [0.1.0] — 2026-07-25
 
