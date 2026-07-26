@@ -1,30 +1,103 @@
-# Write #
+# Eidolon
 
-Cross-platform (Windows, Mac, Linux, iOS, Android) application for handwritten notes.
+A cross-platform handwritten-notes app: vector ink saved as SVG, with WebDAV sync.
 
-[styluslabs.com](http://styluslabs.com) | [Help](http://styluslabs.com/write/Help.html) | [FAQ](http://styluslabs.com/faq)
+Eidolon is a maintained fork of [Write](https://github.com/styluslabs/Write) by Stylus
+Labs (C++/SDL, AGPL-3.0). Upstream development has stopped; this fork keeps the app
+alive — current Android target SDK, modern SDL, and a few new features. It is renamed
+and re-packaged (`ca.helu.eidolon`) to make clear it is **not** a Stylus Labs product:
+all credit for the original app and its architecture belongs to Stylus Labs, and all
+bugs introduced since belong here.
 
-<img alt="Screenshot" src="https://github.com/user-attachments/assets/cc3f1690-073b-4c0e-81ce-f1b4e5ff9fff" width="768">
+Documents are ordinary SVG (gzipped, `.svgz`) — pages, strokes, images, and text are
+all plain SVG elements, viewable in any browser and greppable forever.
 
+## What this fork adds
 
-## Building ##
+- **WebDAV sync** — sync documents to any WebDAV server (static curl + mbedTLS on
+  Android). The device copy is treated as a cache; the server copy is the durable one.
+- **Text boxes** — a Text tool for placing and editing styled text (font family, size,
+  color, bold/italic) as first-class SVG `<text>` elements.
+- **Current Android platform work** — target SDK 36 (Android 16), scoped storage,
+  edge-to-edge insets, predictive-back handling, 16 KB page-size support, SDL upgraded
+  2.0.9 → 2.32.10, larger touch targets on phone-density screens, and fixes for several
+  suspend/resume lifecycle bugs (black screen / dead input on re-open).
 
-Checkout: `git clone --recurse-submodules https://github.com/styluslabs/Write`
+Android is the primary target and the only platform currently exercised regularly.
+The desktop (Linux, macOS, Windows) and iOS builds are inherited from upstream and
+should still work, but get far less testing.
 
-To build executable `syncscribble/Release/Write`:
-* Linux: `cd syncscribble && make USE_SYSTEM_SDL=1`; On Debian/Ubuntu, `apt install build-essential libsdl2-dev`.  Copy fonts from scribbleres/fonts to syncscribble/Release before running Write.
-* Android (on Linux): `cd syncscribble/android && ./gww installRelease`; to install Android SDK and NDK, run `gww --install-sdk`
-* iOS:
- * build SDL: `cd SDL && git checkout write-mac && make -f ../scribbleres/SDL-Makefile.ios`
- * see [nanovgXC readme](https://github.com/styluslabs/nanovgXC?tab=readme-ov-file#example-app) for setup and then run `cd syncscribble && make` or use the [Xcode project](xcode/Write).
-* macOS: `cd syncscribble && make MACOS=1`
-* Windows:
- * install Visual Studio (free Community Edition is fine) and [GNU make for Windows](http://www.equation.com/servlet/equation.cmd?fa=make), ensuring it is available in the path
- * in `syncscribble/Makefile`, set `DEPENDBASE` to the parent folder containing all dependencies that `make` should track
- * build SDL: `cd SDL && git checkout write-win && make -f ../scribbleres/SDL-Makefile.msvc`
- * open a Visual Studio command prompt (from the Start Menu) and run `cd syncscribble && make`
+## Building
 
+Clone with submodules:
 
-## Contributing ##
+```
+git clone --recurse-submodules https://github.com/heluca/Write.git eidolon
+```
 
-Contributions are welcome, but please open an issue or discussion before starting on major changes.
+Note that two submodules point at patched forks and must be on the right branch
+(`--recurse-submodules` handles this): `SDL` on `write-android` (the Android Makefile
+checks the branch *name*) and `ugui` on `textbox`.
+
+### Android
+
+```
+cd syncscribble/android
+./gww assembleRelease        # or installRelease to build + install via adb
+```
+
+`gww` is a gradlew wrapper that can also bootstrap the toolchain: `./gww --install-sdk`.
+Requirements: JDK 21, Android SDK with build-tools 36.0.0, **NDK r27** (pinned by
+`ndkVersion`; the committed curl/mbedTLS prebuilts were built with it — don't mix NDK
+versions). Release output is unsigned; sign for sideloading with your own key, e.g.
+
+```
+apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android \
+    --ks-key-alias androiddebugkey app/build/outputs/apk/release/app-release-unsigned.apk
+```
+
+### Linux
+
+```
+cd syncscribble && make USE_SYSTEM_SDL=1
+```
+
+On Debian/Ubuntu: `apt install build-essential libsdl2-dev`. Copy the fonts from
+`scribbleres/fonts` into `syncscribble/Release` before running.
+
+### macOS
+
+```
+cd syncscribble && make MACOS=1
+```
+
+### iOS
+
+Build SDL first (`cd SDL && make -f ../scribbleres/SDL-Makefile.ios`), then use the
+[Xcode project](xcode/) or `cd syncscribble && make`. See the
+[nanovgXC readme](https://github.com/styluslabs/nanovgXC#example-app) for setup.
+
+### Windows
+
+Install Visual Studio (Community is fine) and
+[GNU make for Windows](http://www.equation.com/servlet/equation.cmd?fa=make); set
+`DEPENDBASE` in `syncscribble/Makefile`; build SDL with
+`make -f ../scribbleres/SDL-Makefile.msvc` (upstream used the `write-win` SDL branch);
+then run `make` from a Visual Studio command prompt in `syncscribble`.
+
+## Status and contributing
+
+This is a personal fork maintained for daily use, with roughly one platform-maintenance
+pass per year around Android's target-SDK deadlines. Release history and per-platform
+build availability are tracked in [CHANGELOG.md](CHANGELOG.md). Issues and patches are welcome —
+especially reports from the desktop and iOS builds — but expect a small-scale project,
+not a product.
+
+For the original app, documentation, and help: [styluslabs.com](http://styluslabs.com)
+| [Help](http://styluslabs.com/write/Help.html) | [FAQ](http://styluslabs.com/faq).
+
+## License
+
+[AGPL-3.0](LICENSE), same as upstream Write. If you distribute builds or run a modified
+version as a network service, the AGPL requires you to make the corresponding source
+available.

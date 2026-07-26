@@ -78,6 +78,23 @@ New toolchain image = push a git tag on `r/android` (its CI builds the image; no
 Run #12 (id 670) green on `80d574f`. Status: Gitea MCP tools (owner `r`, repo `eidolon`) or
 https://git.helu.ca/r/eidolon/actions
 
+## Releases and changelog
+
+- `CHANGELOG.md` at the root, Keep a Changelog format. Discipline: user-visible changes
+  land in `[Unreleased]` in the same commit as the change (same rule as this file).
+- Releasing: the version-bump commit (build.gradle versionCode/versionName) also turns
+  `[Unreleased]` into the dated version section with a **Builds:** line; tag `vX.Y.Z` at
+  the commit CI actually built; create a Gitea release from the tag with the changelog
+  section as the body and a link to the CI run's artifacts. Play release notes = trimmed
+  from the same section.
+- **Policy (Robert's call):** minor releases (x.y.0) are also cross-pushed to GitHub
+  `heluca/Write`, whose Actions workflow (`.github/workflows/write-ci.yml`) builds the
+  Linux release tgz — amend that version's Builds line when it exists. Patch-level and
+  interim releases stay Gitea-only.
+- `v0.1.0` is tagged at `c4fdef8` (the commit CI run #13 built — note this includes
+  `dce699a` UI enlargement, which landed after the 3ec6db6 version-bump commit), with a
+  Gitea release pointing at the run-13 artifacts.
+
 ## The three bugs fixed this session — CHECK OTHER PLATFORMS
 
 All found at target API 35 on the 16 KB emulator, all measured before fixing (see git log
@@ -173,7 +190,6 @@ wouldn't pass Play review.
 
 - **iOS black-screen investigation** — see bug 3 above. Biggest user-facing win left.
 - **Icon** — still upstream Write's. Robert is making a logo. Then mipmap set + 512×512 Play icon.
-- **README** — still byte-for-byte upstream's. Rewrite pending.
 - **Play Console setup** — checklist in `~/git/android/docs/google-play-publishing.md`
   (versionCode = MAJOR*10000 + MINOR*100 + PATCH; currently 100 / "0.1.0", `3ec6db6`).
 - **Native APPVERSION** — Makefile derives ~3.1.x from `git rev-list --count`; cosmetic.
