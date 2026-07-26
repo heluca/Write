@@ -78,6 +78,21 @@ New toolchain image = push a git tag on `r/android` (its CI builds the image; no
 Run #12 (id 670) green on `80d574f`. Status: Gitea MCP tools (owner `r`, repo `eidolon`) or
 https://git.helu.ca/r/eidolon/actions
 
+`.gitea/workflows/build-linux.yml` builds the Linux release tarball on the same
+push, emitting `eidolon-release-linux-tgz` (`eidolon-release-<version>.tar.gz`, ~3.2 MB).
+Nothing to sign, so it needs no secrets. Runs in a pinned `debian:bookworm` container
+rather than on the bare runner, for the same reason upstream's `tgz` target wanted a
+chroot: to link an old enough glibc to run off the build host. Measured floor is
+**2.34** (Ubuntu 22.04+, Debian 12+); the job prints it every run, so a base-image bump
+that raises it is visible instead of silent. Uses `USE_SYSTEM_SDL=1` — SDL links
+dynamically, which is upstream's model (the bundled `setup.sh` installs libsdl2 on
+first run) and avoids the `write-linux` SDL branch, which is 2.0.10 and unpinned.
+Note the container must have `nodejs` installed: `actions/upload-artifact` is a JS
+action the runner execs *inside* the job container, so without it the upload step dies
+with `exec: "node": executable file not found` after an otherwise perfect build.
+The runner (`cetus`) is single-concurrency, so this job queues behind the Android one.
+Run #20 (id 683) green on `3ac7e54`.
+
 ## Releases and changelog
 
 - `CHANGELOG.md` at the root, Keep a Changelog format. Discipline: user-visible changes
@@ -88,9 +103,12 @@ https://git.helu.ca/r/eidolon/actions
   section as the body and a link to the CI run's artifacts. Play release notes = trimmed
   from the same section.
 - **Policy (Robert's call):** minor releases (x.y.0) are also cross-pushed to GitHub
-  `heluca/Write`, whose Actions workflow (`.github/workflows/write-ci.yml`) builds the
-  Linux release tgz — amend that version's Builds line when it exists. Patch-level and
-  interim releases stay Gitea-only.
+  `heluca/Write`. Patch-level and interim releases stay Gitea-only.
+- Linux now builds on Gitea every push (`build-linux.yml`), so a Linux tarball no longer
+  has to wait for an x.y.0 cross-push — take it from the Gitea run that matches the tag,
+  same as the Android artifacts. GitHub's `write-ci.yml` still builds Linux too (and is
+  the only place Windows is built); it is left in place deliberately, so the duplicate
+  Linux build is the cross-check, not the source.
 - `v0.1.0` is tagged at `c4fdef8` (the commit CI run #13 built — note this includes
   `dce699a` UI enlargement, which landed after the 3ec6db6 version-bump commit), with a
   Gitea release pointing at the run-13 artifacts.

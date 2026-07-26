@@ -5,10 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com); versions are semv
 (Android `versionCode` = MAJOR\*10000 + MINOR\*100 + PATCH). The **Builds** line under
 each version records which platforms that version actually shipped on — it is amended
 if a platform's build is produced later. Release process: every release gets a git tag
-(`vX.Y.Z`) and a Gitea release; minor releases (x.y.0) are also pushed to GitHub, whose
-CI builds the Linux package. Patch and interim releases stay on Gitea only.
+(`vX.Y.Z`) and a Gitea release. Gitea CI builds both the Android and Linux packages on
+every push, so both are available for any release; minor releases (x.y.0) are also pushed
+to GitHub, which additionally builds Windows. Patch and interim releases stay on Gitea only.
 
 ## [Unreleased]
+
+**Builds:** Android (AAB + sideload APK), Linux (x86-64 tarball, needs glibc 2.34+ —
+Ubuntu 22.04+/Debian 12+, and libsdl2 which the bundled `setup.sh` installs)
 
 ### Added
 - Text tool: place styled text boxes (font family, size, color, bold/italic) as SVG
